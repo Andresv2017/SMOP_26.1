@@ -1,0 +1,76 @@
+{
+  "variants": {
+    "eggs=1,hatch=0": [
+      { "model": "smop:block/krifto_egg/krifto_egg_0_1" },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_1", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_1", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_1", "y": 270 }
+    ],
+    "eggs=1,hatch=1": [
+      { "model": "smop:block/krifto_egg/krifto_egg_1_1" },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_1", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_1", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_1", "y": 270 }
+    ],
+    "eggs=1,hatch=2": [
+      { "model": "smop:block/krifto_egg/krifto_egg_2_1" },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_1", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_1", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_1", "y": 270 }
+    ],
+    "eggs=2,hatch=0": [
+      { "model": "smop:block/krifto_egg/krifto_egg_0_2" },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_2", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_2", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_2", "y": 270 }
+    ],
+    "eggs=2,hatch=1": [
+      { "model": "smop:block/krifto_egg/krifto_egg_1_2" },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_2", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_2", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_2", "y": 270 }
+    ],
+    "eggs=2,hatch=2": [
+      { "model": "smop:block/krifto_egg/krifto_egg_2_2" },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_2", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_2", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_2", "y": 270 }
+    ],
+    "eggs=3,hatch=0": [
+      { "model": "smop:block/krifto_egg/krifto_egg_0_3" },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_3", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_3", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_3", "y": 270 }
+    ],
+    "eggs=3,hatch=1": [
+      { "model": "smop:block/krifto_egg/krifto_egg_1_3" },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_3", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_3", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_3", "y": 270 }
+    ],
+    "eggs=3,hatch=2": [
+      { "model": "smop:block/krifto_egg/krifto_egg_2_3" },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_3", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_3", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_3", "y": 270 }
+    ],
+    "eggs=4,hatch=0": [
+      { "model": "smop:block/krifto_egg/krifto_egg_0_4" },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_4", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_4", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_0_4", "y": 270 }
+    ],
+    "eggs=4,hatch=1": [
+      { "model": "smop:block/krifto_egg/krifto_egg_1_4" },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_4", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_4", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_1_4", "y": 270 }
+    ],
+    "eggs=4,hatch=2": [
+      { "model": "smop:block/krifto_egg/krifto_egg_2_4" },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_4", "y": 90 },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_4", "y": 180 },
+      { "model": "smop:block/krifto_egg/krifto_egg_2_4", "y": 270 }
+    ]
+  }
+}

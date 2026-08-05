@@ -1,0 +1,6 @@
+{
+  "parent": "smop:block/templates/small_egg/small_egg_template_four",
+  "textures": {
+    "all": "smop:block/krifto/krifto_egg_stage0"
+  }
+}

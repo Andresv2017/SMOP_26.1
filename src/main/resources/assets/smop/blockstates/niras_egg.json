@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "hatch=0": [
+      {
+        "model": "smop:block/niras_egg/niras_egg1"
+      }
+    ],
+    "hatch=1": [
+      {
+        "model": "smop:block/niras_egg/niras_egg2"
+      }
+    ],
+    "hatch=2": [
+      {
+        "model": "smop:block/niras_egg/niras_egg3"
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "gt_roar": {
+    "subtitle": "subtitles.gt_roar",
+    "attenuation_distance": 64,
+    "sounds": [
+      { "name": "smop:gt/roar1", "stream": false }
+    ]
+  }
+}
+

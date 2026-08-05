@@ -1,0 +1,14 @@
+{
+  "replace": false,
+  "values": [
+    "smop:hell_hippo_raw_meat",
+    "smop:hell_hippo_cooked_meat",
+    "smop:raw_salmon",
+    "smop:nirasmo_meat",
+    "smop:cooked_nirasmo_meat",
+    "smop:krifto_meat",
+    "smop:cooked_krifto_meat",
+    "smop:tango_leg",
+    "smop:cooked_tango_leg"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "type": "neoforge:add_spawns",
+  "biomes": [
+    "minecraft:jungle",
+    "minecraft:sparse_jungle",
+    "minecraft:badlands",
+    "minecraft:wooded_badlands",
+    "minecraft:eroded_badlands",
+    "minecraft:snowy_taiga",
+    "minecraft:grove"
+  ],
+  "spawners": [
+    {
+      "type": "smop:kriftognathus",
+      "maxCount": 3,
+      "minCount": 1,
+      "weight": 8
+    }
+  ]
+}

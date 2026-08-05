@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "smop:block/gt_head" }
+  }
+}

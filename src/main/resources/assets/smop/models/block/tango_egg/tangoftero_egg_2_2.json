@@ -1,0 +1,6 @@
+{
+  "parent": "smop:block/templates/small_egg/small_egg_template_two",
+  "textures": {
+    "all": "smop:block/tango/tangoftero_egg_stage2"
+  }
+}
