@@ -12,11 +12,10 @@ import net.darkblade.smop.client.krifto.KriftoBabyAnimations;
 import net.darkblade.smop.entity.SMOPFlyingAnimal;
 import net.darkblade.smop.entity.ai.goal.FollowOwnerBaseGoal;
 import net.darkblade.smop.entity.ai.goal.GenericBreedGoal;
+import net.darkblade.smop.entity.ai.goal.SMOPRandomStrollGoal;
 import net.darkblade.smop.entity.ai.goal.egg.EggGoalRegistry;
 import net.darkblade.smop.entity.ai.goal.egg.ProtectEggBaseGoal;
-import net.darkblade.smop.entity.ai.goal.flying.FlyFromNowAndThenGoal;
 import net.darkblade.smop.entity.ai.goal.flying.FollowOwnerFlyingGoal;
-import net.darkblade.smop.entity.ai.goal.flying.RandomStrollAndFlightGoal;
 import net.darkblade.smop.entity.egg.CustomEggBorn;
 import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
@@ -79,6 +78,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     /** Terminal velocity a carried player is allowed — the whole point of the perch. */
     private static final double CARRY_FALL_CLAMP = -0.15D;
 
+    /** Clip names the flight lifecycle drives, by the same convention as {@code ANIM_SLEEP} and co. */
+    private static final String ANIM_START_FLIGHT = "start_flight";
+    private static final String ANIM_LANDING = "landing";
+    private static final String ANIM_SWOOP = "swoop";
+
     /** Wild nest defence: what it will actually see off. */
     private static final Predicate<LivingEntity> NEST_THREAT_SELECTOR =
             entity -> entity.getType() == EntityType.SNIFFER || entity.getType() == EntityType.FOX;
@@ -112,30 +116,167 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── GOALS ─────
 
+    /**
+     * Flight goals go in via {@link #registerFlightGoals}: take-off at 2, <b>landing at 3</b>, flight
+     * wander at 7.
+     *
+     * <p>The landing goal sits that high on purpose. It holds MOVE, and so do the escort and the
+     * melee goal — put those above it and a mob that acquires a target (or an owner) mid-descent
+     * starves the landing goal of its flag and hangs in the landing state with nothing driving it
+     * down. A bird committed to a touchdown finishes it first. Take-off deliberately holds no flags
+     * at all, so the ground goals below keep running while it lifts off.
+     *
+     * <p>Following the owner is split in two: the flying escort at 4 takes over once the mob is in
+     * the air and asks for a take-off when it is not, and {@link FollowOwnerBaseGoal} at 8 walks it
+     * over at close range. That one has to sit <b>above</b> the stroll goal, or wandering would win
+     * every arbitration and the mob would never actually follow on foot.
+     */
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, this.createSleepGoal());
-        this.goalSelector.addGoal(2, new AnimatableMeleeAttackGoal(this, 1.8D, true)
+        this.registerFlightGoals(2, 7, 3);
+        this.goalSelector.addGoal(4, new FollowOwnerFlyingGoal(this, 8.0F));
+        this.goalSelector.addGoal(5, new AnimatableMeleeAttackGoal(this, 1.8D, true)
                 .reach(2.0F)
                 .cooldown(10)
                 .attackCondition(target -> !this.isBaby() && !this.isOnPlayersHead())
                 .onAttack((target, animator) -> animator.play(animator.getByName("attack"))));
-        this.goalSelector.addGoal(3, new FollowOwnerFlyingGoal(this, 1.2D, 6.0F, 2.0F));
-        this.goalSelector.addGoal(4, new GenericBreedGoal<>(this, 1.2D));
-        this.goalSelector.addGoal(5, new RandomStrollAndFlightGoal(this, 1.0D));
-        this.goalSelector.addGoal(6, new FlyFromNowAndThenGoal(this));
+        this.goalSelector.addGoal(6, new GenericBreedGoal<>(this, 1.2D));
+
+        this.followOwnerOnFoot = new FollowOwnerBaseGoal(this, 1.0D, 6.0F, 2.0F);
+        this.goalSelector.addGoal(8, this.followOwnerOnFoot);
+        this.goalSelector.addGoal(9, new SMOPRandomStrollGoal(this, 1.0D, 120,
+                () -> !this.isFlying() && !this.isBaby() && !this.isMovementLocked()));
 
         // Solitary nester that actually defends the clutch, unlike the Tangoftero's colony.
         EggGoalRegistry.registerWithOwnGoal(this, SMOPBlocks.KRIFTO_EGG,
                 4, 6, true, true,
-                ProtectEggBaseGoal.EggBreakReaction.IGNORE, NEST_THREAT_SELECTOR, 7);
+                ProtectEggBaseGoal.EggBreakReaction.IGNORE, NEST_THREAT_SELECTOR, 10);
 
-        this.goalSelector.addGoal(10, new LookAtPlayerGoal(this, Player.class, 3.0F));
-        this.goalSelector.addGoal(11, new RandomLookAroundGoal(this));
-        this.goalSelector.addGoal(12, new FollowOwnerBaseGoal(this, 1.0D, 10.0F, 2.0F));
+        this.goalSelector.addGoal(11, new LookAtPlayerGoal(this, Player.class, 3.0F));
+        this.goalSelector.addGoal(12, new RandomLookAroundGoal(this));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
+    }
+
+    /** Held so the navigation swap can tell it to re-read {@link #getNavigation()}. */
+    @Nullable
+    private FollowOwnerBaseGoal followOwnerOnFoot;
+
+    @Override
+    protected void onNavigationSwapped() {
+        if (this.followOwnerOnFoot != null) {
+            this.followOwnerOnFoot.refreshNavigation();
+        }
+    }
+
+    // ───────────────────────────────────────────────────── FLIGHT ─────
+
+    /** The chick's pterosaur parents circle low over their nesting ground rather than soaring. */
+    @Override
+    protected double getMinFlightAltitude() {
+        return 6.0D;
+    }
+
+    @Override
+    protected double getMaxFlightAltitude() {
+        return 18.0D;
+    }
+
+    @Override
+    protected double getWanderHorizontalRadius() {
+        return 22.0D;
+    }
+
+    @Override
+    protected int computeGroundRestTicks() {
+        return 200 + this.random.nextInt(200);
+    }
+
+    @Override
+    protected int computeMaxFlightTicks() {
+        return 300 + this.random.nextInt(300);
+    }
+
+    @Override
+    protected double getLandingDescentSpeed() {
+        return 0.07D;
+    }
+
+    @Override
+    protected double getTakeoffLiftSpeed() {
+        return 0.09D;
+    }
+
+    /** Low, so the flare and the {@code landing} clip run against the ground rather than over it. */
+    @Override
+    protected double getLandingApproachAltitude() {
+        return 1.6D;
+    }
+
+    /** The authored {@code start_flight} already owns the pose — the physics nose-up would stack. */
+    @Override
+    protected boolean applyTiltDuringTakeoff() {
+        return false;
+    }
+
+    /**
+     * Long enough for the 1.3 s {@code landing} clip plus the glide it is played over. This is a
+     * safety net, not the intended exit: {@link KriftoLandingGoal} completes on ground contact.
+     */
+    @Override
+    protected int getMaxLandingTicks() {
+        return Math.max(60, this.clipDurationTicks(ANIM_LANDING) * 3);
+    }
+
+    @Override
+    protected TakeoffGoal createTakeoffGoal() {
+        return new KriftoTakeoffGoal();
+    }
+
+    @Override
+    protected LandingGoal createLandingGoal() {
+        return new KriftoLandingGoal();
+    }
+
+    /** Holds the take-off phase open for exactly as long as the {@code start_flight} clip runs. */
+    private class KriftoTakeoffGoal extends TakeoffGoal {
+        @Override
+        protected boolean shouldCompleteTakeoff() {
+            return !KriftognathusEntity.this.animator().isPlaying(ANIM_START_FLIGHT);
+        }
+    }
+
+    /**
+     * Ground contact still ends the landing — a bird that has touched down is down, whatever the
+     * clip thinks — but a mob that has not touched anything yet holds the phase until the
+     * {@code landing} clip finishes, so the flare is never cut off mid-gesture.
+     */
+    private class KriftoLandingGoal extends LandingGoal {
+        @Override
+        protected boolean shouldCompleteLanding() {
+            return super.shouldCompleteLanding()
+                    && !KriftognathusEntity.this.animator().isPlaying(ANIM_LANDING);
+        }
+    }
+
+    // ───────────────────────────────────────────────────── FLIGHT ANIMATION HOOKS ─────
+
+    @Override
+    protected void onTakeoffBegin() {
+        this.playIfRegistered(ANIM_START_FLIGHT);
+    }
+
+    /** The stoop into the landing approach — the one clip 1.20.1 registered and never played. */
+    @Override
+    protected void onSeekGroundBegin() {
+        this.playIfRegistered(ANIM_SWOOP);
+    }
+
+    @Override
+    protected void onLandingBegin() {
+        this.playIfRegistered(ANIM_LANDING);
     }
 
     // ───────────────────────────────────────────────────── ANIMATIONS ─────
@@ -146,9 +287,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
      * keeps running underneath — which is what gives the frame an attack or a perch ends something
      * to fall back to instead of collapsing to the bind pose. Same arrangement as the Tangoftero.
      *
-     * <p>The chick has no flight clips at all, so the air family is registered adult-only. Its play
-     * conditions gate on {@code isFlying()}, which {@code SMOPFlyingAnimal} refuses to set on a baby,
-     * so they can never be selected against the chick model — which lacks the bones they animate.
+     * <p>The chick has no flight clips at all, so the air family carries only an adult definition.
+     * The loops gate on {@code isFlying()} and the one-shots are fired by the flight lifecycle, and
+     * both of those are closed to a baby — {@code SMOPFlyingAnimal} refuses to set the flight flag on
+     * one and refuses to start a take-off for one. So no air clip can ever be baked against the chick
+     * model, which lacks the bones they animate.
      */
     @Override
     public void registerAnimations() {
@@ -183,9 +326,9 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         // fall back to and the flight flag can never be true for it.
         StandardAnimation flyIdle = adultClip("fly_idle", () -> KriftoAnimations.aidle, Loop.REPEATING, 2, 0.6F);
         StandardAnimation flight = adultClip("flight", () -> KriftoAnimations.flight, Loop.REPEATING, 2, 0.8F);
-        StandardAnimation takeOff = adultClip("start_flight", () -> KriftoAnimations.start_flight, Loop.PLAY_ONCE, 1, 1.0F);
-        StandardAnimation landing = adultClip("landing", () -> KriftoAnimations.landing, Loop.PLAY_ONCE, 1, 1.3F);
-        StandardAnimation swoop = adultClip("swoop", () -> KriftoAnimations.swoop, Loop.PLAY_ONCE, 0, 1.6F);
+        StandardAnimation takeOff = adultClip(ANIM_START_FLIGHT, () -> KriftoAnimations.start_flight, Loop.PLAY_ONCE, 1, 1.0F);
+        StandardAnimation landing = adultClip(ANIM_LANDING, () -> KriftoAnimations.landing, Loop.PLAY_ONCE, 1, 1.3F);
+        StandardAnimation swoop = adultClip(ANIM_SWOOP, () -> KriftoAnimations.swoop, Loop.PLAY_ONCE, 1, 1.6F);
 
         idle.blendInMs(300).blendOutMs(250);
         walk.blendInMs(200).blendOutMs(200);
@@ -196,6 +339,7 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         flight.blendInMs(250).blendOutMs(250);
         takeOff.blendInMs(100).blendOutMs(300);
         landing.blendInMs(150).blendOutMs(250);
+        swoop.blendInMs(200).blendOutMs(300);
 
         // The beak: a strictly frontal box across the frames it snaps shut.
         HitWindow.of(BITE_WINDOW_START, BITE_WINDOW_END)
@@ -215,6 +359,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         swim.setPlayCondition(a -> this.canPlayLocomotion() && !this.isFlying() && this.isInWater());
 
         // Air: hover versus travel, on the synced held flag so the two do not strobe at the threshold.
+        // Deliberately still eligible through take-off, the stoop and landing: those one-shots sit at
+        // priority 1 and out-render these at 2, and a clip that outlives its phase (or a phase that
+        // outlives its clip) then falls back onto a running cycle instead of onto the bind pose.
+        // isFlyingMoving() is forced false during take-off and landing, so what shows underneath
+        // them is the hover.
         flyIdle.setPlayCondition(a -> this.canPlayLocomotion() && this.isFlying() && !this.isFlyingMoving());
         flight.setPlayCondition(a -> this.canPlayLocomotion() && this.isFlying() && this.isFlyingMoving());
 
@@ -241,6 +390,7 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return !this.isDeadOrDying() && !this.isOnPlayersHead();
     }
 
+
     /**
      * Builds a clip whose definition is chosen by age lazily. The suppliers are not a style choice:
      * {@code AnimationDefinition} is {@code @OnlyIn(Dist.CLIENT)} and {@code registerAnimations()}
@@ -261,13 +411,8 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     @Override
     public void tick() {
         super.tick();
-        if (this.level().isClientSide()) {
-            return;
-        }
-        if (this.isOnPlayersHead()) {
+        if (!this.level().isClientSide() && this.isOnPlayersHead()) {
             this.tickPerch();
-        } else {
-            this.handleAutoNavigationSwitch();
         }
     }
 
@@ -289,6 +434,13 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
             this.setOrderedToSit(false);
             this.setNoGravity(false);
             return;
+        }
+
+        // A mob perched mid-flight would leave the flight goals steering against the position this
+        // method pins every tick. Landing it here is not a touchdown to animate — it climbed onto a
+        // head, it did not come down onto the ground — so the state is cleared without the clip.
+        if (this.isFlying() || this.isTakingOff() || this.isLanding()) {
+            this.resetFlightState();
         }
 
         this.setPosRaw(player.getX(), player.getEyeY() + 0.05D, player.getZ());

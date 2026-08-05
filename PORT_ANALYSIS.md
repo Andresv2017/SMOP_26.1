@@ -741,14 +741,147 @@ Las clases de la librería no son reutilizables tal cual para nadar: `SmartFlyin
 → *Candidato real a subir a DeluxeLib: una navegación de "medio abierto" compartida entre vuelo y
 nado, con `PathCarrot` parametrizable por medio. El Nirasmosaurus la va a querer igual.*
 
-## Fase 5 — Mob 3: **Kriftognathus** + base voladora
+## Fase 5 — Mob 3: **Kriftognathus** + base voladora ✅ COMPLETA (código)
 
-- [ ] Evaluar: ¿`AbstractFlyingEntity` de DeluxeLib sirve tal cual, o Krifto necesita el modelo "vuela cuando quiere / camina cuando quiere" de `FlyingEntity`? → **Recomendado: usar `AbstractFlyingEntity` y adaptar** (tiene despegue/aterrizaje con hooks de animación, mejor que el switch brusco actual).
-- [ ] `KriftognathusEntity`, modelos adulto + bebé, `KriftoAnimations` + `KriftoBabyAnimations` (4532).
-- [ ] Posarse en la cabeza del jugador (reusar ideas de `OwlPerchClient` de DeluxeLib — hace exactamente esto para el búho).
-- [ ] `StealItemGoal` + `RunAwayAfterStealGoal`.
-- [ ] Bloque `krifto_egg`, `CustomEggBorn`.
-- [ ] Renderer sobre `FlyingMobRenderer`.
+### Hecho (compila — **sin arrancar cliente ni servidor tras el cambio de vuelo**)
+
+- [x] `SMOPFlyingAnimal` sobre `SMOPAnimal`, ya con el **ciclo de vuelo completo** de
+      `AbstractFlyingEntity` traído dentro (ver §"El ciclo de vuelo" abajo). Reutiliza
+      `SmartFlyingNavigation` y `SmoothFlyingMoveControl` de la librería (ambos aceptan un `Mob` a
+      secas) en lugar del `NewFlyingPathNavigation` escrito a mano.
+- [x] Se borra el paquete `StoCSyncFlying`: `FLYING` es entity data sincronizada.
+- [x] Los bebés no vuelan, aplicado en `setFlying()` y no en cada punto de llamada.
+- [x] `KriftognathusEntity`, modelos adulto + bebé sobre `Rig`, 4532 líneas de animación (copia-pega).
+- [x] Percha en la cabeza del jugador (frena la caída a −0.15), pelaje según bioma de nacimiento.
+- [x] Bloque `krifto_egg`, `CustomEggBorn`, huevo de spawn, atributos, spawn placement, loot, lang.
+- [x] Spawns por bioma en **una sola entrada**: `DeluxeBiomeSpawnProvider` nombra su fichero por
+      entidad, así que una segunda entrada del mismo mob sobrescribiría la primera.
+- [x] `FollowOwnerFlyingGoal` reescrita sobre el `FollowOwnerGoal` interno del Owl.
+- [x] `flightPitch`/`flightRoll` al render state, aplicados en `KriftognathusRenderer`.
+
+### ⚠️ Por qué la herencia NO es opción (verificado contra las fuentes de 26.1)
+
+`AbstractFlyingEntity extends PathfinderMob implements Enemy` (línea 72).
+
+```
+TamableAnimal → Animal → AgeableMob → PathfinderMob
+AbstractFlyingEntity ─────────────────┘
+```
+
+- El `implements Enemy` **no** es el bloqueo, y tener dueño **tampoco**: el Owl es `AbstractFlyingEntity`
+  y resuelve la propiedad con un simple `@Nullable UUID ownerUUID` + `findOwner()`, sin `TamableAnimal`.
+- El bloqueo real es que `AbstractFlyingEntity` y `AgeableMob` son ramas **hermanas** de
+  `PathfinderMob`, y el Krifto necesita la rama ageable: tiene polluelo, nace de huevo con
+  `setAge(-24000)` y se cría. El Owl no tiene crías, por eso a él le basta `PathfinderMob`.
+- *(Corrección a una versión anterior de esta nota, que decía que las hermanas eran `AgeableMob` y
+  `Animal`. No: `Animal extends AgeableMob`. La conclusión no cambia.)*
+
+→ Se trae el sistema, no se hereda la clase. Igual que con `SMOPWaterAnimal`.
+
+### El ciclo de vuelo
+
+`SMOPFlyingAnimal` se reescribió entera. Fuera: el interruptor binario de 1.20.1 —
+`switchNavigation()`, `handleAutoNavigationSwitch()`, `groundTicks`/`maxGroundTicks`,
+`isTouchingSolidGround()`, el EDA `WANTS_TO_FLY`, `FlyFromNowAndThenGoal` y
+`RandomStrollAndFlightGoal`. Dentro:
+
+```
+REPOSO ──(groundRestTimer llega a 0)──▶ TakeoffGoal
+  beginTakeoff()    → FLYING, TAKING_OFF, nav aérea, sin gravedad, onTakeoffBegin()
+  completeTakeoff() → TAKING_OFF off, onTakeoffComplete()
+VUELO ──(flightDurationTimer ≥ maxFlightTicks)──▶ descenso con motor
+  seekingGround     → onSeekGroundBegin()          ← el picado
+──(dentro de getLandingApproachAltitude())──▶ LandingGoal
+  beginLanding()    → LANDING, onLandingBegin()
+  completeLanding() → en tierra, gravedad, temporizador de reposo, onLandingComplete()
+```
+
+Los clips quedan enganchados así, y `swoop` **suena por primera vez** desde que existe el mod:
+
+| Clip | Quién lo dispara |
+|---|---|
+| `start_flight` | `onTakeoffBegin()`. La fase dura lo que el clip: `shouldCompleteTakeoff()` devuelve `!isPlaying("start_flight")` |
+| `swoop` | `onSeekGroundBegin()`. En 1.20.1 solo lo lanzaba `StealItemGoal`, que estaba comentado |
+| `landing` | `onLandingBegin()`. `shouldCompleteLanding()` exige contacto **y** clip terminado; `getMaxLandingTicks()` sale del propio clip |
+
+**Cinco cosas que no fueron copia-pega:**
+
+1. **`DATA_IS_GROUND_MOVING` de la librería no se trajo.** `SMOPAnimal` ya tiene `MOVING`/`isMoving()`
+   con el mismo hold-timer; lo único que hacía falta era que fuera `false` en el aire, o sea un
+   override de `isMovingNow()`. Duplicar el flag habría sido API muerta que Niras y Hell Hippo
+   copiarían por inercia.
+2. **Bebés.** La invariante vivía solo en `setFlying()`. Ahora también cierra `TakeoffGoal.canUse()`
+   y `beginTakeoff()`: con el ciclo puesto, el goal podía entrar en `start()` y quedarse a medias
+   porque `setFlying` lo rechazaba en silencio.
+3. **Dormir en el aire.** `TakeoffGoal` **no sostiene ningún flag** — es deliberado en la librería,
+   para que los goals de tierra sigan corriendo mientras despega — así que el selector habría
+   lanzado al aire a un mob dormido. `createSleepGoal()` se sobreescribe con `!isFlying()`.
+4. **El rugido no inmoviliza en vuelo.** `isMovementLocked()` anula la horizontal en
+   `SMOPAnimal#travel`; en tierra eso es "plantarse", en el aire es congelarse a media altura hasta
+   que el goal de aterrizaje lo baje.
+5. **Órdenes de quedarse.** El clamp de `isOrderedToSit()` de `SMOPAnimal` solo para la navegación y
+   mata la velocidad — con la gravedad apagada eso es quedarse colgado del cielo. `aiStep` llama a
+   `requestLanding()`, que vence el temporizador de vuelo y manda al mob por el camino normal de
+   picado y aterrizaje. Su espejo `requestTakeoff()` vence el de reposo en vez de llamar a
+   `beginTakeoff()` desde fuera, para que las puertas (bebé, dormido, posado) sigan en un solo sitio.
+
+### `FollowOwnerFlyingGoal` — del pathfinding al control directo
+
+La versión de 1.20.1 pathfindeaba hasta el dueño, recalculaba cada 10 ticks y **se teletransportaba a
+los 12 bloques** — que en la práctica significa teletransportarse constantemente, porque una
+navegación aérea rara vez cierra ese hueco en diez ticks. La nueva es una adaptación del
+`FollowOwnerGoal` interno del Owl (`test/OwlEntity.java:1207`): navegación parada y vuelo por
+control de velocidad directo.
+
+- **Controlador PD**, `accel = kp·error − kd·velocidad`, con las ganancias del Owl sin tocar
+  (`kp=0.04`, `kd=0.4`). No son perillas independientes: subir kp o bajar kd vuelve complejos los
+  autovalores de la recurrencia y el mob empieza a oscilar — el "se acerca, se aleja, se acerca" que
+  produce la versión ingenua (velocidad objetivo proporcional a la distancia pasada por un segundo
+  suavizado, o sea dos retardos de primer orden en cascada).
+- Punto de escolta al costado y por encima del dueño; **órbita** tras ~5 s de dueño quieto.
+- **En tierra no dirige nada**: pide despegue con `requestTakeoff()` y se aparta. El seguimiento a
+  pie a corta distancia lo hace `FollowOwnerBaseGoal`, que sube de prioridad 12 a **8** — estaba por
+  debajo del wander, así que nunca ganaba una arbitración.
+- El teletransporte sobrevive como último recurso a 24 bloques (borde de chunk), con
+  `tryToTeleportToOwner()` de vanilla en vez de las ~40 líneas a mano.
+
+### El orden de los goals importa más que de costumbre
+
+`LandingGoal` va en prioridad **3**, por encima de la escolta (4) y del melee (5). Los tres sostienen
+MOVE: con el aterrizaje debajo, un mob que fija objetivo o ve a su dueño a mitad del descenso deja al
+`LandingGoal` sin su flag y se queda colgado en estado de aterrizaje sin nada que lo baje. Un pájaro
+comprometido con la toma la termina primero. Por la misma razón `FollowOwnerFlyingGoal` se aparta
+mientras `isTakingOff() || isLanding()`.
+
+Orden final: 0 Float · 1 Sleep · 2 Takeoff · 3 Landing · 4 FollowOwnerFlying · 5 Melee · 6 Breed ·
+7 FlightWander · 8 FollowOwnerBase · 9 stroll de tierra · 10 huevos · 11-12 mirar.
+
+### Prioridad de clips: por qué los bucles de vuelo NO se apagan durante las transiciones
+
+Primer instinto: apagar `fly_idle`/`flight` mientras `isTakingOff() || isLanding()`. Es un error.
+En este mod **número de prioridad más bajo = se renderiza encima** (locomoción en 2-3, one-shots en
+0-1), así que `start_flight`/`landing`/`swoop` en 1 ya tapan a los bucles en 2. Y si el clip termina
+antes que su fase (el `landing` dura 26 ticks y la fase puede llegar a 78), apagar el bucle deja al
+modelo cayendo a la pose bind durante la diferencia. Se quedan encendidos a propósito: como
+`isFlyingMoving()` se fuerza a `false` durante despegue y aterrizaje, lo que asoma debajo es el
+planeo, que es la cama correcta.
+
+### Otros cabos sueltos
+
+- `registerFallingDeath` (caer muerto y rematar al tocar suelo) **sigue sin poderse usar**, pero no
+  por el vuelo: `KriftoAnimations` tiene un único `death` de 1.5 s, no la pareja caída/impacto que
+  ese registro pide. Es exactamente el fallo que la librería documenta para el búho. Se conecta
+  cuando exista el clip.
+- `StealItemGoal` + `RunAwayAfterStealGoal` **no portados**. Estaban **comentados** en el
+  `registerGoals` de 1.20.1 (líneas 309-310), o sea desactivados. Decidir si se quieren.
+- Renderer propio en vez de `FlyingMobRenderer`: esa base está fijada a `AbstractFlyingEntity` y a
+  `DeluxeEntityRenderState`, y el Krifto necesita render state propio (sexo + bioma) y swap
+  adulto/polluelo. Sus cuatro líneas (lerp en `extractRenderState` + dos rotaciones en
+  `setupRotations`) están copiadas en `KriftognathusRenderer`.
+- Se perdió un arreglo que ya no aplica: la corrección del test invertido de
+  `FlyFromNowAndThenGoal.findLandingSpot()` (aterrizaba dentro del agua) se fue con la clase. El
+  descenso nuevo usa `findGroundY`, que sube por encima de lo que el mob esté rozando y busca el
+  primer sólido hacia abajo.
 
 ## Fase 6 — Mob 4: **Grand Tyrant** (valida Cortex + HitWindow)
 
@@ -812,6 +945,7 @@ nado, con `PathCarrot` parametrizable por medio. El Nirasmosaurus la va a querer
 
 1. **`PartEntity` en 26.1** — bloquea Fase 6 y 7. Investigar primero.
 2. **Hell_Hippo: ¿`AbstractChestedHorse` o reescritura?** — bloquea Fase 8.
-3. **Krifto: ¿`AbstractFlyingEntity` de DeluxeLib o portar `FlyingEntity`?** — bloquea Fase 5.
+3. ~~**Krifto: ¿`AbstractFlyingEntity` de DeluxeLib o portar `FlyingEntity`?**~~ — resuelto en la
+   Fase 5: se trae el sistema dentro de `SMOPFlyingAnimal`, no se hereda la clase.
 4. **¿Promover `WaterEntity`/`AmphibiousEntity` a DeluxeLib?** — afecta a dónde vive el código de Fase 4 y 7.
 5. **Armadura animal en 26.1** — bloquea la parte de armadura de Fase 8.

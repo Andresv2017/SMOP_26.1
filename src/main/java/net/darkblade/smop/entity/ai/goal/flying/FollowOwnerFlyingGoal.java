@@ -1,161 +1,198 @@
 package net.darkblade.smop.entity.ai.goal.flying;
 
 import net.darkblade.smop.entity.SMOPFlyingAnimal;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.entity.ai.navigation.PathNavigation;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.pathfinder.PathType;
-import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumSet;
 
 /**
- * Follow-the-owner for a mob that can take to the air: it walks after its owner while close, takes
- * off once the gap opens, and teleports when it falls hopelessly behind.
+ * Escorts the owner through the air: holds a point just off their side and above head height while
+ * they move, and drifts into a slow orbit once they have stood still for a while.
  *
- * <p>Separate from {@code FollowOwnerBaseGoal} because the mode switch has to happen mid-follow, and
- * because the goal caches the navigation object — which {@code switchNavigation} replaces, so the
- * cached reference has to be refreshed or the goal keeps steering the navigator the mob no longer uses.
+ * <p><b>Port note.</b> The 1.20.1 goal pathed to the owner, recalculated every 10 ticks, and
+ * teleported the moment the gap reached 12 blocks — which in practice meant it teleported constantly,
+ * because a flying navigation rarely closes that gap in ten ticks. This is an adaptation of the
+ * {@code FollowOwnerGoal} inside DeluxeLib's Owl: navigation is stopped and the mob is flown by
+ * direct velocity control, so it arcs in and settles instead of stair-stepping and blinking.
+ *
+ * <p><b>The controller.</b> {@code accel = kp·error − kd·velocity} — a critically damped PD loop.
+ * The two gains are not independent knobs: raising {@link #POS_GAIN} or lowering {@link #DAMPING}
+ * makes the eigenvalues of the underlying recurrence complex, and the mob starts ringing — the
+ * "approach, back off, approach again" ping-pong that the naive version (a distance-proportional
+ * target velocity fed through a second smoothing pass, i.e. two cascaded first-order lags) produces
+ * on every large initial gap. They are the Owl's values, unchanged.
+ *
+ * <p>Grounded, this goal does not steer at all: it asks the mob to take off, via
+ * {@link SMOPFlyingAnimal#requestTakeoff()}, and stands down until it is airborne. Close-range
+ * following on foot is left to {@code FollowOwnerBaseGoal}.
  */
 public class FollowOwnerFlyingGoal extends Goal {
 
-    /** Beyond this the mob gives up pathing and teleports. */
-    private static final double TELEPORT_DISTANCE = 12.0D;
-    /** Beyond this it takes off rather than trying to keep up on foot. */
-    private static final double TAKEOFF_DISTANCE = 8.0D;
-    /** Path recalculation interval. */
-    private static final int REPATH_INTERVAL = 10;
+    /** Speed cap in blocks/tick. */
+    private static final double FOLLOW_SPEED = 0.5D;
+    /** Position-error gain (kp) — see the class note before touching. */
+    private static final double POS_GAIN = 0.04D;
+    /** Velocity damping (kd) — see the class note before touching. */
+    private static final double DAMPING = 0.4D;
+    /** Height above the owner the escort point sits at. */
+    private static final double FOLLOW_HEIGHT = 2.4D;
+    /** Sideways offset of the escort point, so the mob is beside the owner rather than on top. */
+    private static final double FOLLOW_SIDE = 1.3D;
+
+    /** Ticks the owner must stand still before the escort becomes an orbit (~5 s). */
+    private static final int ORBIT_AFTER_TICKS = 100;
+    private static final double ORBIT_RADIUS = 1.8D;
+    private static final double ORBIT_HEIGHT = 2.4D;
+    private static final float ORBIT_ANGULAR_SPEED = 3.0F;
+    /** Squared horizontal movement below which the owner counts as standing still. */
+    private static final double IDLE_MOVE_THRESHOLD_SQ = 0.0025D;
+
+    /** Max yaw change per tick while escorting, in degrees. */
+    private static final float TURN_RATE = 10.0F;
+
+    /**
+     * Last resort only. Vanilla's own follow goal teleports at 12; that number is wrong here because
+     * this goal closes ground under power rather than by pathing, so 12 blocks is an ordinary
+     * mid-flight gap rather than a failure. At 24 the only thing that still produces it is the owner
+     * crossing a chunk boundary the mob cannot follow through.
+     */
+    private static final double TELEPORT_DISTANCE_SQ = 24.0D * 24.0D;
 
     private final SMOPFlyingAnimal mob;
-    private final double speedModifier;
-    private final Level level;
-    private final float startDistance;
-    private final float stopDistance;
+    /** Distance at which the mob decides it is worth taking to the air. */
+    private final double startDistanceSq;
 
-    private PathNavigation navigation;
+    private int idleTicks;
+    private float orbitAngle;
     @Nullable
-    private LivingEntity owner;
-    private int timeToRecalcPath;
+    private Vec3 lastOwnerPos;
 
-    public FollowOwnerFlyingGoal(SMOPFlyingAnimal mob, double speedModifier, float startDistance, float stopDistance) {
+    public FollowOwnerFlyingGoal(SMOPFlyingAnimal mob, float startDistance) {
         this.mob = mob;
-        this.speedModifier = speedModifier;
-        this.level = mob.level();
-        this.startDistance = startDistance;
-        this.stopDistance = stopDistance;
-        this.navigation = mob.getNavigation();
+        this.startDistanceSq = startDistance * startDistance;
         this.setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
     }
 
     @Override
     public boolean canUse() {
-        LivingEntity owner = this.mob.getOwner();
-        if (owner == null
-                || this.mob.isOrderedToSit()
-                || this.mob.isPassenger()
-                || this.mob.isLeashed()
-                || this.mob.isWandering()
-                || this.mob.isMovementLocked()) {
+        LivingEntity owner = this.owner();
+        if (owner == null || this.mob.isBaby() || this.standingDown()) {
             return false;
         }
-        if (this.mob.distanceToSqr(owner) < this.startDistance * this.startDistance) {
-            return false;
+        if (this.mob.isFlying()) {
+            return this.flightSettled();
         }
-        this.owner = owner;
-        return true;
+        // On the ground and the owner has pulled away: ask for a take-off and let TakeoffGoal do it,
+        // rather than forcing the lifecycle from outside. This goal picks up once airborne.
+        if (this.mob.distanceToSqr(owner) > this.startDistanceSq) {
+            this.mob.requestTakeoff();
+        }
+        return false;
     }
 
     @Override
     public boolean canContinueToUse() {
-        return this.owner != null
-                && !this.navigation.isDone()
-                && !this.mob.isOrderedToSit()
-                && !this.mob.isPassenger()
-                && this.mob.distanceToSqr(this.owner) > this.stopDistance * this.stopDistance;
+        return this.owner() != null && this.mob.isFlying() && this.flightSettled() && !this.standingDown();
+    }
+
+    /**
+     * Cruising, rather than mid-transition. This is not cosmetic: this goal and the landing goal both
+     * hold MOVE, and this one sits above it, so escorting through a landing would starve the landing
+     * goal of its flag and leave the mob stuck in the landing state with nothing driving it down.
+     * The take-off case is milder — the escort would simply fight the lift — but it is the same rule.
+     */
+    private boolean flightSettled() {
+        return !this.mob.isTakingOff() && !this.mob.isLanding();
+    }
+
+    /** Orders and states that say "not now": told to stay, told to roam, carried, tethered, pinned. */
+    private boolean standingDown() {
+        return this.mob.isOrderedToSit()
+                || this.mob.isWandering()
+                || this.mob.isPassenger()
+                || this.mob.isLeashed()
+                || this.mob.isMovementLocked();
+    }
+
+    @Override
+    public boolean requiresUpdateEveryTick() {
+        return true;
     }
 
     @Override
     public void start() {
-        this.timeToRecalcPath = 0;
+        this.mob.getNavigation().stop();
+        this.idleTicks = 0;
+        this.lastOwnerPos = null;
     }
 
     @Override
     public void stop() {
-        this.owner = null;
-        this.navigation.stop();
+        this.lastOwnerPos = null;
     }
 
     @Override
     public void tick() {
-        if (this.owner == null) {
+        LivingEntity owner = this.owner();
+        if (owner == null) {
             return;
         }
-        this.mob.getLookControl().setLookAt(this.owner, 10.0F, this.mob.getMaxHeadXRot());
+        this.mob.getLookControl().setLookAt(owner, 10.0F, this.mob.getMaxHeadXRot());
 
-        if (--this.timeToRecalcPath > 0) {
-            return;
-        }
-        this.timeToRecalcPath = this.adjustedTickDelay(REPATH_INTERVAL);
-
-        double distance = this.mob.distanceTo(this.owner);
-        if (distance >= TELEPORT_DISTANCE) {
-            this.teleportToOwner();
-            return;
-        }
-
-        if (!this.mob.isFlying() && distance > TAKEOFF_DISTANCE && !this.mob.isBaby()) {
-            this.mob.switchNavigation();
-            // switchNavigation swaps the navigator out; without re-reading it this goal would keep
-            // issuing orders to the ground navigation the mob just discarded.
-            this.navigation = this.mob.getNavigation();
+        if (this.mob.distanceToSqr(owner) > TELEPORT_DISTANCE_SQ) {
+            // 26.1 maintains this on TamableAnimal, complete with a canFlyToOwner() hook — the
+            // 1.20.1 version of this goal hand-rolled a ~40-line search with its own path-type
+            // checks. It returns void and may quietly fail, so the escort below runs regardless: if
+            // it worked the error is now tiny and the controller has nothing to do, and if it did
+            // not the mob simply keeps flying over. Flight state is deliberately left alone — forcing
+            // a landing on a teleport that failed would drop the mob out of the sky.
+            this.mob.tryToTeleportToOwner();
         }
 
-        if (!this.navigation.isInProgress() || distance > 2.5D) {
-            this.navigation.moveTo(this.owner, this.speedModifier);
+        Vec3 ownerPos = owner.position();
+        boolean moved = this.lastOwnerPos == null
+                || ownerPos.subtract(this.lastOwnerPos).horizontalDistanceSqr() > IDLE_MOVE_THRESHOLD_SQ;
+        this.lastOwnerPos = ownerPos;
+        this.idleTicks = moved ? 0 : this.idleTicks + 1;
+
+        Vec3 target;
+        if (this.idleTicks >= ORBIT_AFTER_TICKS) {
+            this.orbitAngle += ORBIT_ANGULAR_SPEED;
+            double radians = Math.toRadians(this.orbitAngle);
+            target = ownerPos.add(Math.cos(radians) * ORBIT_RADIUS, ORBIT_HEIGHT, Math.sin(radians) * ORBIT_RADIUS);
+        } else {
+            // Off to the owner's side and above head height — flying alongside, not overhead.
+            float yawRad = owner.getYRot() * ((float) Math.PI / 180.0F);
+            target = ownerPos.add(Math.cos(yawRad) * FOLLOW_SIDE, FOLLOW_HEIGHT, Math.sin(yawRad) * FOLLOW_SIDE);
+        }
+
+        Vec3 velocity = this.mob.getDeltaMovement();
+        Vec3 accel = target.subtract(this.mob.position()).scale(POS_GAIN).subtract(velocity.scale(DAMPING));
+        Vec3 next = velocity.add(accel);
+        double speed = next.length();
+        if (speed > FOLLOW_SPEED) {
+            next = next.scale(FOLLOW_SPEED / speed);
+        }
+        this.mob.setDeltaMovement(next);
+
+        // Face where it is going while it is going somewhere; face the owner once it has settled.
+        if (next.horizontalDistanceSqr() > 1.0E-4D) {
+            this.mob.faceHeading(next.x, next.z, TURN_RATE);
+        } else {
+            this.mob.faceHeading(ownerPos.x - this.mob.getX(), ownerPos.z - this.mob.getZ(), TURN_RATE);
         }
     }
 
-    private void teleportToOwner() {
-        if (this.owner == null) {
-            return;
+    /** The owner, if they exist and are in this level — chasing across dimensions makes no sense. */
+    @Nullable
+    private LivingEntity owner() {
+        LivingEntity owner = this.mob.getOwner();
+        if (owner == null || !owner.isAlive() || owner.isSpectator() || owner.level() != this.mob.level()) {
+            return null;
         }
-        BlockPos ownerPos = this.owner.blockPosition();
-        for (int attempt = 0; attempt < 10; attempt++) {
-            int dx = this.randomOffset(-3, 3);
-            int dy = this.randomOffset(-1, 1);
-            int dz = this.randomOffset(-3, 3);
-            if (this.tryTeleportTo(ownerPos.offset(dx, dy, dz))) {
-                return;
-            }
-        }
-    }
-
-    private boolean tryTeleportTo(BlockPos pos) {
-        if (this.owner == null
-                || Math.abs(pos.getX() - this.owner.getX()) < 2.0D
-                || Math.abs(pos.getZ() - this.owner.getZ()) < 2.0D) {
-            return false;
-        }
-        if (!this.canTeleportTo(pos)) {
-            return false;
-        }
-        this.mob.snapTo(pos.getX() + 0.5D, pos.getY(), pos.getZ() + 0.5D, this.mob.getYRot(), this.mob.getXRot());
-        this.navigation.stop();
-        return true;
-    }
-
-    private boolean canTeleportTo(BlockPos pos) {
-        PathType type = WalkNodeEvaluator.getPathTypeStatic(this.mob, pos.mutable());
-        boolean safe = type == PathType.WALKABLE || this.level.getBlockState(pos.below()).isAir();
-        return safe && this.level.noCollision(this.mob,
-                this.mob.getBoundingBox().move(Vec3.atCenterOf(pos).subtract(this.mob.position())));
-    }
-
-    private int randomOffset(int min, int max) {
-        return this.mob.getRandom().nextInt(max - min + 1) + min;
+        return owner;
     }
 }

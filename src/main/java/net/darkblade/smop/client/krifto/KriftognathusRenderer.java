@@ -1,5 +1,7 @@
 package net.darkblade.smop.client.krifto;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import net.darkblade.deluxelib.anim.Animatable;
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
@@ -7,6 +9,7 @@ import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.renderer.entity.AgeableMobRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.Mth;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -53,6 +56,26 @@ public class KriftognathusRenderer
         }
         state.male = entity.isMale();
         state.spawnBiome = entity.getSpawnBiomePath();
+        state.flightPitch = Mth.lerp(partialTick, entity.prevFlightPitch, entity.flightPitch);
+        state.flightRoll = Mth.lerp(partialTick, entity.prevFlightRoll, entity.flightRoll);
+    }
+
+    /**
+     * Nose-up when climbing, nose-down when diving, banking into turns. Rotating the pose stack here
+     * rather than a bone keeps the lean independent of the keyframes, so the authored flight clips
+     * never fight the physics tilt.
+     *
+     * <p>These are the four lines of DeluxeLib's {@code FlyingMobRenderer}, copied rather than
+     * inherited: that base is pinned to {@code AbstractFlyingEntity} and to a bare
+     * {@code DeluxeEntityRenderState}, and this renderer needs neither — it needs
+     * {@link AgeableMobRenderer} for the chick swap and a render state of its own for the coat.
+     */
+    @Override
+    protected void setupRotations(@NotNull KriftoRenderState state, @NotNull PoseStack poseStack,
+                                  float bodyRot, float entityScale) {
+        super.setupRotations(state, poseStack, bodyRot, entityScale);
+        poseStack.mulPose(Axis.XP.rotationDegrees(state.flightPitch));
+        poseStack.mulPose(Axis.ZP.rotationDegrees(-state.flightRoll));
     }
 
     /** Off, so the authored death clip is not fought by vanilla's 90° corpse flop. */
