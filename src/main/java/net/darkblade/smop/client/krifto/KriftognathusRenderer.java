@@ -3,13 +3,18 @@ package net.darkblade.smop.client.krifto;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.darkblade.deluxelib.anim.Animatable;
+import net.darkblade.deluxelib.client.anim.HumanoidPoseApplier;
+import net.darkblade.deluxelib.client.render.PerchPoseHandler;
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
 import net.minecraft.client.model.EntityModel;
+import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.renderer.entity.AgeableMobRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -22,7 +27,8 @@ import org.jetbrains.annotations.NotNull;
  * onto the state and killing the vanilla death flip — are the few lines below.
  */
 public class KriftognathusRenderer
-        extends AgeableMobRenderer<KriftognathusEntity, KriftoRenderState, EntityModel<? super KriftoRenderState>> {
+        extends AgeableMobRenderer<KriftognathusEntity, KriftoRenderState, EntityModel<? super KriftoRenderState>>
+        implements PerchPoseHandler {
 
     private static final Identifier MALE = SMOP.id("textures/entity/krifto/krifto_male.png");
     private static final Identifier FEMALE = SMOP.id("textures/entity/krifto/krifto_female.png");
@@ -104,5 +110,26 @@ public class KriftognathusRenderer
             return state.male ? MALE_FROSTY : FEMALE_FROSTY;
         }
         return state.male ? MALE : FEMALE;
+    }
+
+    // ------------------------------------------------------------------
+    // PerchPoseHandler — a tamed Krifto perches over its owner's head as a parachute, and poses them
+    // gripping its legs with BOTH arms rather than the library's default single falconry arm. Where
+    // it sits is KriftoPerchPlacement's job; PerchClient does the drawing.
+    // ------------------------------------------------------------------
+
+    @Override
+    public <S extends HumanoidRenderState> void applyHostPose(@NotNull LivingEntity perched,
+                                                              @NotNull HumanoidModel<S> model,
+                                                              @NotNull S hostState) {
+        // Falling gets the animated pose (legs spread and drifting), driven off a running clock so
+        // the loop actually plays; walking about on the ground gets the static grip, which authors
+        // no leg channels at all and so leaves the stride to vanilla. isPerchGliding() is synced, so
+        // this read is valid here on the client — see the field's own note.
+        if (perched instanceof KriftognathusEntity krifto && krifto.isPerchGliding()) {
+            HumanoidPoseApplier.apply(KriftoRiderPose.FALLING, model, hostState.ageInTicks / 20.0F);
+        } else {
+            HumanoidPoseApplier.applyStatic(KriftoRiderPose.GRIPPING, model);
+        }
     }
 }

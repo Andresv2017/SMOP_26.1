@@ -297,12 +297,20 @@ public class TangofteroEntity extends SMOPAnimal
         // 2.0 reach; halfWidth 0.6 is roughly the jaw's own width. Tune with /deluxelib debug
         // hitboxes. Damage matches the ATTACK_DAMAGE attribute — a literal, same convention as
         // Athenian and Arpy, which do not track the live attribute either.
+        // filter: a wild Tangoftero never bites another Tangoftero — this is what keeps the flock
+        // from mauling itself over stray HurtByTargetGoal retaliations. A TAMED one is the one
+        // exception: it can end up targeting a wild Tangoftero through the same owner-defence goals
+        // (OwnerHurtByTargetGoal/OwnerHurtTargetGoal) that let it defend against anything else, and
+        // without this escape hatch the bite would silently veto that target before the shape test
+        // ever ran — same bug as the Kriftognathus's identical filter, same fix: let the actual
+        // target through, keep the blanket exclusion for everyone else of the species.
         HitWindow.of(6, 8)
                 .shape(AttackShape.box(1.6F, 0.6F))
                 .anchor(0.6F, 0.0F, 0.5F)
                 .damage(2.0F)
                 .knockback(0.1F)
-                .filter(target -> !(target instanceof TangofteroEntity))
+                .filter(target -> !(target instanceof TangofteroEntity)
+                        || (this.isTame() && target == this.getTarget()))
                 .applyTo(attack);
 
         // Mutually exclusive by construction: exactly one of these four holds at any moment.

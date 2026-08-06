@@ -28,6 +28,10 @@ public class KriftognathusModel extends EntityModel<DeluxeEntityRenderState> {
             Rig.<KriftognathusModel>builder()
                     .resetPoses()
                     .keyframeBlend(220L, 0)
+                    // Layer 1: bite_flight (gLower_jaw only). Applied after layer 0 so the jaw snap
+                    // composites additively on top of whatever locomotion/flight clip is current
+                    // instead of replacing it — see KriftoAnimations#bite_flight.
+                    .keyframeBlend(80L, 1)
                     .lookAt(m -> m.neck, 35.0F, 30.0F)
                     .build();
 

@@ -842,14 +842,20 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
         @Override
         public boolean canUse() {
+            // !isMovementLocked(): this is the one flight goal that does not already stand down on
+            // its own, so a mob pinned by something else (a Kriftognathus perched on its owner's
+            // head, say) would otherwise keep picking wander legs and steering against whatever is
+            // holding it in place.
             return SMOPFlyingAnimal.this.isFlying()
                     && !SMOPFlyingAnimal.this.isTakingOff()
-                    && !SMOPFlyingAnimal.this.isLanding();
+                    && !SMOPFlyingAnimal.this.isLanding()
+                    && !SMOPFlyingAnimal.this.isMovementLocked();
         }
 
         @Override
         public boolean canContinueToUse() {
-            return SMOPFlyingAnimal.this.isFlying() && !SMOPFlyingAnimal.this.isLanding();
+            return SMOPFlyingAnimal.this.isFlying() && !SMOPFlyingAnimal.this.isLanding()
+                    && !SMOPFlyingAnimal.this.isMovementLocked();
         }
 
         @Override
