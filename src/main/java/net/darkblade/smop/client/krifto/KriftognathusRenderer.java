@@ -15,6 +15,7 @@ import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemDisplayContext;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -45,6 +46,7 @@ public class KriftognathusRenderer
                 new KriftognathusModel(context.bakeLayer(KriftognathusModel.LAYER_LOCATION)),
                 new KriftoBabyModel(context.bakeLayer(KriftoBabyModel.LAYER_LOCATION)),
                 0.4F);
+        this.addLayer(new StolenItemLayer(this));
     }
 
     @Override
@@ -64,6 +66,10 @@ public class KriftognathusRenderer
         state.spawnBiome = entity.getSpawnBiomePath();
         state.flightPitch = Mth.lerp(partialTick, entity.prevFlightPitch, entity.flightPitch);
         state.flightRoll = Mth.lerp(partialTick, entity.prevFlightRoll, entity.flightRoll);
+        // Resolved unconditionally, same as vanilla's own HoldingEntityRenderState: an empty
+        // ItemStack resolves to an empty ItemStackRenderState, which StolenItemLayer skips itself.
+        this.itemModelResolver.updateForLiving(state.stolenItem, entity.getStolenItem(),
+                ItemDisplayContext.GROUND, entity);
     }
 
     /**

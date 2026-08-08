@@ -36,10 +36,22 @@ public class KriftognathusModel extends EntityModel<DeluxeEntityRenderState> {
                     .build();
 
     public final ModelPart neck;
+    /**
+     * The chain a talon-attached render layer has to walk by hand to land in the right spot — see
+     * {@link StolenItemLayer}. {@code gLegs} sits at a permanent zero offset today (nothing ever
+     * animates it), but it is exposed and walked anyway rather than skipped: skipping it silently
+     * relies on that staying true forever.
+     */
+    public final ModelPart piglug;
+    public final ModelPart legs;
+    public final ModelPart backLegs;
 
     public KriftognathusModel(ModelPart root) {
         super(root);
-        this.neck = root.getChild("gPiglug").getChild("gBody_parts").getChild("gNeck");
+        this.piglug = root.getChild("gPiglug");
+        this.neck = this.piglug.getChild("gBody_parts").getChild("gNeck");
+        this.legs = this.piglug.getChild("gLegs");
+        this.backLegs = this.legs.getChild("gBack_legs");
     }
 
     @Override

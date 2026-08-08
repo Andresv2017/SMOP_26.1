@@ -108,6 +108,8 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
     private boolean flyingMovingLocal;
     /** Descending under power toward the landing approach — the stoop. */
     protected boolean seekingGround;
+    /** Ticks the current aimed stoop has been closing on its target. @see #getMaxSeekGroundTicks() */
+    private int seekGroundTicks;
     /** Parked mid-air between wander legs. Drops the anti-flicker hold so the hover reads at once. */
     private boolean flightHovering;
 
@@ -306,6 +308,7 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         this.flyingMovingLocal = false;
         this.flyAnimHoldTicks = 0;
         this.seekingGround = false;
+        this.seekGroundTicks = 0;
         this.flightHovering = false;
         this.entityData.set(FLYING_MOVING, false);
     }
@@ -331,6 +334,23 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
     public void requestLanding() {
         if (this.isFlying() && !this.isTakingOff() && !this.isLanding()) {
             this.flightDurationTimer = Math.max(this.flightDurationTimer, this.maxFlightTicks);
+        }
+    }
+
+    /**
+     * Holds the mob down for at least {@code ticks} longer, by pushing out the same rest timer
+     * {@link #requestTakeoff()} clears. Never shortens an existing hold.
+     *
+     * <p>For grounded moments that have to finish where they started. {@link TakeoffGoal} gates on
+     * nothing but that timer and the movement lock, so a scripted action that pins the mob while it
+     * plays still launches on the very tick its lock expires if the rest timer happened to drain
+     * while it was playing — which it usually has, for anything that runs after a long stretch on the
+     * ground. Asking for the hold at the start of such a moment keeps it on the ground through to
+     * the end of it.
+     */
+    public void delayTakeoff(int ticks) {
+        if (!this.isFlying() && !this.isTakingOff()) {
+            this.groundRestTimer = Math.max(this.groundRestTimer, ticks);
         }
     }
 
@@ -405,6 +425,37 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
     /** Forward speed in blocks/tick during the stoop, so it reads as a swoop and not a lift drop. */
     protected double getDescentForwardSpeed() {
         return 0.25D;
+    }
+
+    /**
+     * Where the stoop should put the mob down, or {@code null} for the default — come down wherever
+     * the current heading leads.
+     *
+     * <p>The default stoop does not steer: it runs forward along whatever yaw the mob happened to
+     * hold when the flight timer expired, at {@link #getDescentForwardSpeed()} a tick, from as high
+     * as {@link #getMaxFlightAltitude()}. That is the right look for an idle bird coming down
+     * somewhere, and completely wrong when the mob is coming down <em>for</em> something — the
+     * touchdown lands tens of blocks downrange of it. Return a position and the descent aims: it
+     * turns onto the target, refuses to touch down short of it, and kills the forward run once it is
+     * overhead so the landing is on the spot rather than past it.
+     */
+    @Nullable
+    protected Vec3 getDescentTarget() {
+        return null;
+    }
+
+    /** Horizontal distance that counts as overhead of {@link #getDescentTarget()}. */
+    protected double getDescentArrivalRadius() {
+        return 1.5D;
+    }
+
+    /**
+     * Safety net for an aimed stoop: past this many ticks the target is ignored and the mob simply
+     * comes down where it is. Without it, a target behind a wall or over a ledge the mob cannot
+     * close on would hold it circling at approach height indefinitely.
+     */
+    protected int getMaxSeekGroundTicks() {
+        return 200;
     }
 
     /** Extra nose-up blended in while landing — the flare that sells the touchdown. */
@@ -877,6 +928,7 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
             if (SMOPFlyingAnimal.this.flightDurationTimer >= SMOPFlyingAnimal.this.maxFlightTicks) {
                 SMOPFlyingAnimal.this.seekingGround = true;
+                SMOPFlyingAnimal.this.seekGroundTicks = 0;
                 SMOPFlyingAnimal.this.flightHovering = false;
                 SMOPFlyingAnimal.this.getNavigation().stop();
                 SMOPFlyingAnimal.this.onSeekGroundBegin();
@@ -919,7 +971,24 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
                     SMOPFlyingAnimal.this.getX(), SMOPFlyingAnimal.this.getZ());
             double distToGround = SMOPFlyingAnimal.this.getY() - groundY;
 
-            if (distToGround <= SMOPFlyingAnimal.this.getLandingApproachAltitude()) {
+            // An aimed stoop, when the mob is coming down for something — see getDescentTarget().
+            // aiming stays false for the ordinary case so nothing below changes shape for it.
+            Vec3 aim = SMOPFlyingAnimal.this.getDescentTarget();
+            boolean aiming = aim != null
+                    && SMOPFlyingAnimal.this.seekGroundTicks++ < SMOPFlyingAnimal.this.getMaxSeekGroundTicks();
+            boolean overhead = false;
+            if (aiming) {
+                double dx = aim.x - SMOPFlyingAnimal.this.getX();
+                double dz = aim.z - SMOPFlyingAnimal.this.getZ();
+                double radius = SMOPFlyingAnimal.this.getDescentArrivalRadius();
+                overhead = dx * dx + dz * dz <= radius * radius;
+                if (!overhead) {
+                    SMOPFlyingAnimal.this.faceHeading(dx, dz,
+                            SMOPFlyingAnimal.this.getFlightYawTurnSpeed());
+                }
+            }
+
+            if ((!aiming || overhead) && distToGround <= SMOPFlyingAnimal.this.getLandingApproachAltitude()) {
                 SMOPFlyingAnimal.this.seekingGround = false;
                 SMOPFlyingAnimal.this.beginLanding();
                 return;
@@ -929,6 +998,16 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
             double maxSink = SMOPFlyingAnimal.this.getLandingDescentSpeed() * 2.0D;
             double sink = Mth.clamp(distToGround * 0.03D,
                     SMOPFlyingAnimal.this.getLandingDescentSpeed(), maxSink);
+            if (aiming) {
+                if (overhead) {
+                    // On the spot — drop straight down instead of running on past it.
+                    forward = 0.0D;
+                } else if (distToGround <= SMOPFlyingAnimal.this.getLandingApproachAltitude()) {
+                    // Down to hand-over height with ground still to cover: hold this altitude and
+                    // keep closing rather than touching down short of the target.
+                    sink = 0.0D;
+                }
+            }
             if (SMOPFlyingAnimal.this.horizontalCollision) {
                 // Obstacle ahead: veer off, slow down, and drop at full rate to clear it.
                 SMOPFlyingAnimal.this.setYRot(SMOPFlyingAnimal.this.getYRot() + 15.0F);

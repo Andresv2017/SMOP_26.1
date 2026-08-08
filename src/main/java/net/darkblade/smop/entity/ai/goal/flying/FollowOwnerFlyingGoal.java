@@ -18,12 +18,9 @@ import java.util.EnumSet;
  * {@code FollowOwnerGoal} inside DeluxeLib's Owl: navigation is stopped and the mob is flown by
  * direct velocity control, so it arcs in and settles instead of stair-stepping and blinking.
  *
- * <p><b>The controller.</b> {@code accel = kp·error − kd·velocity} — a critically damped PD loop.
- * The two gains are not independent knobs: raising {@link #POS_GAIN} or lowering {@link #DAMPING}
- * makes the eigenvalues of the underlying recurrence complex, and the mob starts ringing — the
- * "approach, back off, approach again" ping-pong that the naive version (a distance-proportional
- * target velocity fed through a second smoothing pass, i.e. two cascaded first-order lags) produces
- * on every large initial gap. They are the Owl's values, unchanged.
+ * <p>The actual flight is {@link OrbitFlightController}'s critically damped PD loop — see that class
+ * for the arithmetic and why the gains below are not independent knobs. They are the Owl's values,
+ * unchanged.
  *
  * <p>Grounded, this goal does not steer at all: it asks the mob to take off, via
  * {@link SMOPFlyingAnimal#requestTakeoff()}, and stands down until it is airborne. Close-range
@@ -33,9 +30,9 @@ public class FollowOwnerFlyingGoal extends Goal {
 
     /** Speed cap in blocks/tick. */
     private static final double FOLLOW_SPEED = 0.5D;
-    /** Position-error gain (kp) — see the class note before touching. */
+    /** Position-error gain (kp) — see {@link OrbitFlightController} before touching. */
     private static final double POS_GAIN = 0.04D;
-    /** Velocity damping (kd) — see the class note before touching. */
+    /** Velocity damping (kd) — see {@link OrbitFlightController} before touching. */
     private static final double DAMPING = 0.4D;
     /** Height above the owner the escort point sits at. */
     private static final double FOLLOW_HEIGHT = 2.4D;
@@ -64,6 +61,7 @@ public class FollowOwnerFlyingGoal extends Goal {
     private final SMOPFlyingAnimal mob;
     /** Distance at which the mob decides it is worth taking to the air. */
     private final double startDistanceSq;
+    private final OrbitFlightController controller = new OrbitFlightController(POS_GAIN, DAMPING, FOLLOW_SPEED, TURN_RATE);
 
     private int idleTicks;
     private float orbitAngle;
@@ -169,21 +167,7 @@ public class FollowOwnerFlyingGoal extends Goal {
             target = ownerPos.add(Math.cos(yawRad) * FOLLOW_SIDE, FOLLOW_HEIGHT, Math.sin(yawRad) * FOLLOW_SIDE);
         }
 
-        Vec3 velocity = this.mob.getDeltaMovement();
-        Vec3 accel = target.subtract(this.mob.position()).scale(POS_GAIN).subtract(velocity.scale(DAMPING));
-        Vec3 next = velocity.add(accel);
-        double speed = next.length();
-        if (speed > FOLLOW_SPEED) {
-            next = next.scale(FOLLOW_SPEED / speed);
-        }
-        this.mob.setDeltaMovement(next);
-
-        // Face where it is going while it is going somewhere; face the owner once it has settled.
-        if (next.horizontalDistanceSqr() > 1.0E-4D) {
-            this.mob.faceHeading(next.x, next.z, TURN_RATE);
-        } else {
-            this.mob.faceHeading(ownerPos.x - this.mob.getX(), ownerPos.z - this.mob.getZ(), TURN_RATE);
-        }
+        this.controller.step(this.mob, target, ownerPos);
     }
 
     /** The owner, if they exist and are in this level — chasing across dimensions makes no sense. */

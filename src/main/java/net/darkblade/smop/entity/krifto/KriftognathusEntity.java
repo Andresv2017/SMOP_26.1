@@ -17,6 +17,8 @@ import net.darkblade.smop.entity.SMOPFlyingAnimal;
 import net.darkblade.smop.entity.ai.goal.FollowOwnerBaseGoal;
 import net.darkblade.smop.entity.ai.goal.GenericBreedGoal;
 import net.darkblade.smop.entity.ai.goal.SMOPRandomStrollGoal;
+import net.darkblade.smop.entity.ai.goal.StealFromPlayerGoal;
+import net.darkblade.smop.entity.ai.goal.TameFeedGoal;
 import net.darkblade.smop.entity.ai.goal.egg.EggGoalRegistry;
 import net.darkblade.smop.entity.ai.goal.egg.ProtectEggBaseGoal;
 import net.darkblade.smop.entity.ai.goal.flying.FollowOwnerFlyingGoal;
@@ -54,6 +56,7 @@ import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.OwnerHurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.OwnerHurtTargetGoal;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -103,10 +106,20 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     private static final String ANIM_SWOOP = "swoop";
     /** Jaw-only overlay {@code attack} swaps for on a mid-air bite — see {@link #registerAnimations()}. */
     private static final String ANIM_BITE_FLIGHT = "bite_flight";
+    /** Also the {@code startAction} name TameFeedGoal closes the ritual with. */
+    public static final String ANIM_TAMED = "tamed";
+    /** Extra ground time after the {@code tamed} clip. @see #onActionStart(String) */
+    private static final int TAMED_GROUND_HOLD_TICKS = 40;
+    /** Also the {@code startAction} name StealFromPlayerGoal snatches with. */
+    public static final String ANIM_STEAL = "steal";
 
     /** Wild nest defence: what it will actually see off. */
     private static final Predicate<LivingEntity> NEST_THREAT_SELECTOR =
             entity -> entity.getType() == EntityType.SNIFFER || entity.getType() == EntityType.FOX;
+
+    /** Feedings required to complete the ground-taming ritual — see {@link TameFeedGoal}. */
+    private static final int FEED_GOAL_MIN = 3;
+    private static final int FEED_GOAL_MAX = 4;
 
     private static final EntityDataAccessor<String> SPAWN_BIOME =
             SynchedEntityData.defineId(KriftognathusEntity.class, EntityDataSerializers.STRING);
@@ -125,6 +138,17 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
      */
     private static final EntityDataAccessor<Boolean> PERCH_GLIDING =
             SynchedEntityData.defineId(KriftognathusEntity.class, EntityDataSerializers.BOOLEAN);
+    /**
+     * What a wild Krifto is currently carrying off in its hind legs after a successful heist — see
+     * {@link StealFromPlayerGoal}. {@link ItemStack#EMPTY} when nothing was stolen.
+     *
+     * <p>Deliberately not written to NBT: a heist runs its course in a matter of seconds (orbit, dive,
+     * snatch, flee, drop), so a save/load landing in that narrow window losing the item is an
+     * acceptable trade against hand-rolling {@code ItemStack} codec plumbing nothing else in this mod
+     * needs yet — same call as the scripted-action state in {@code SMOPAnimal}.
+     */
+    private static final EntityDataAccessor<ItemStack> STOLEN_ITEM =
+            SynchedEntityData.defineId(KriftognathusEntity.class, EntityDataSerializers.ITEM_STACK);
 
     public KriftognathusEntity(EntityType<? extends TamableAnimal> type, Level level) {
         super(type, level);
@@ -319,6 +343,7 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         builder.define(SPAWN_BIOME, "default");
         builder.define(PERCH_TARGET_ID, -1);
         builder.define(PERCH_GLIDING, false);
+        builder.define(STOLEN_ITEM, ItemStack.EMPTY);
     }
 
     // ───────────────────────────────────────────────────── GOALS ─────
@@ -363,7 +388,16 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
                 .onAttack((target, animator) -> animator.play(
                         animator.getByName(this.isFlying() ? ANIM_BITE_FLIGHT : "attack"))));
         this.goalSelector.addGoal(5, new FollowOwnerFlyingGoal(this, 8.0F));
+        // Shares priority 5 with the escort above — mutually exclusive by construction (that one
+        // needs isTame() + an owner, this one needs !isTame()), so the two never actually contest
+        // MOVE/LOOK. Below LandingGoal/TakeoffGoal (3/2): see StealFromPlayerGoal's class note.
+        this.goalSelector.addGoal(5, new StealFromPlayerGoal(this));
         this.goalSelector.addGoal(6, new GenericBreedGoal<>(this, 1.2D));
+        // Tied with FlightWanderGoal (7, via registerFlightGoals below): WrappedGoal#canBeReplacedBy
+        // only yields the flag on a strict `<`, so a tie means this goal can never steal MOVE/LOOK
+        // back from FlightWanderGoal once it is running — see TameFeedGoal's class note for why that
+        // matters (an earlier version at priority 6 permanently starved FlightWanderGoal's tick()).
+        this.goalSelector.addGoal(7, new TameFeedGoal(this));
 
         this.followOwnerOnFoot = new FollowOwnerBaseGoal(this, 1.0D, 6.0F, 2.0F);
         this.goalSelector.addGoal(8, this.followOwnerOnFoot);
@@ -483,7 +517,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         @Override
         public boolean canUse() {
             if (super.canUse()) {
-                return true;
+                // An offering on the ground outranks the wander schedule — launching mid-ritual
+                // strands the meal for a whole flight cycle. Only the scheduled take-off is held;
+                // the target bypass below still fires, since a fight is worth leaving lunch for
+                // (and TameFeedGoal stands down on its own once there is a target).
+                return !KriftognathusEntity.this.hasFeedOfferingNearby();
             }
             LivingEntity target = KriftognathusEntity.this.getTarget();
             return !KriftognathusEntity.this.isBaby()
@@ -574,6 +612,16 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         StandardAnimation onHead = clip("on_players_head",
                 () -> KriftoAnimations.on_players_head, () -> KriftoBabyAnimations.on_players_head,
                 Loop.REPEATING, 1, 2.4F);
+
+        // Ground-taming ritual — see TameFeedGoal. Driven by SMOPAnimal's scripted-action state
+        // (startAction/isPerforming), not by a dedicated synced flag of its own.
+        StandardAnimation eating = clip("eating", () -> KriftoAnimations.eating, () -> KriftoBabyAnimations.eating,
+                Loop.PLAY_ONCE, 1, 2.5F);
+        StandardAnimation tamed = clip("tamed", () -> KriftoAnimations.tamed, () -> KriftoBabyAnimations.tamed,
+                Loop.PLAY_ONCE, 1, 2.5F);
+        // Adult-only, same reasoning as the flight family below: StealFromPlayerGoal never engages a
+        // baby (see its canUse()), so there is no call to author or fall back to a chick clip.
+        StandardAnimation steal = adultClip(ANIM_STEAL, () -> KriftoAnimations.steal, Loop.PLAY_ONCE, 1, 0.65F);
 
         // Adult-only: the chick model has none of these bones, so there is no baby definition to
         // fall back to and the flight flag can never be true for it.
@@ -690,10 +738,14 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         sleep.setPlayCondition(a -> this.isSleeping() || this.isPreparingSleep());
         preparingSleep.setNextAnimation(ANIM_SLEEP);
 
+        eating.setPlayCondition(a -> this.isPerforming("eating"));
+        tamed.setPlayCondition(a -> this.isPerforming(ANIM_TAMED));
+        steal.setPlayCondition(a -> this.isPerforming(ANIM_STEAL));
+
         death.blockAdditive();
 
         this.animator().register(idle, walk, sprint, swim, preparingSleep, sleep, awakening,
-                attack, bite, onHead, flyIdle, flyIdlePerched, flight, takeOff, landing, swoop, biteFlight);
+                attack, bite, onHead, eating, tamed, steal, flyIdle, flyIdlePerched, flight, takeOff, landing, swoop, biteFlight);
         this.animator().registerDeath(death);
     }
 
@@ -726,10 +778,87 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         if (this.level().isClientSide()) {
             return;
         }
+        this.tickFeedOffering();
         if (this.isPerched()) {
             this.tickPerch();
         } else {
             this.faceCombatTarget();
+        }
+    }
+
+    /** Ticks between offering scans. @see #tickFeedOffering() */
+    private static final int OFFERING_SCAN_INTERVAL = 10;
+
+    /** Server-only cache of {@link TameFeedGoal#findOffering}. @see #tickFeedOffering() */
+    @Nullable
+    private ItemEntity feedOffering;
+
+    /**
+     * Keeps the taming ritual reachable from the air, and keeps it from being abandoned halfway.
+     *
+     * <p>{@link TameFeedGoal} stands down completely while airborne — it has to, or it holds MOVE
+     * over {@code FlightWanderGoal} and starves the one goal that actually drives a descent. That
+     * leaves nobody inside the goal system watching for an offering while the mob is flying, so the
+     * entity watches instead and works the two lifecycle levers from out here:
+     *
+     * <ul>
+     *   <li>Airborne: {@link #requestLanding()}, so the ordinary stoop-and-land runs now rather than
+     *       whenever {@link #computeMaxFlightTicks()} happens to expire — up to 30 s of the mob
+     *       circling over a meal it has no way to notice.</li>
+     *   <li>Grounded: {@link #hasFeedOfferingNearby()} pins the take-off (see
+     *       {@code KriftoTakeoffGoal#canUse}). The ritual is several bites with a cooldown between
+     *       them, easily longer than a ground-rest timer that has usually been draining since
+     *       touchdown — without this the mob launches between bites and the whole ritual restarts a
+     *       flight cycle later, over and over.</li>
+     * </ul>
+     *
+     * <p>Scanned on an interval, not every tick: it is a radius-16 entity query, and the answer does
+     * not meaningfully change inside ten ticks.
+     */
+    private void tickFeedOffering() {
+        if (this.isTame()) {
+            this.feedOffering = null;
+            return;
+        }
+        if (this.tickCount % OFFERING_SCAN_INTERVAL == 0) {
+            this.feedOffering = TameFeedGoal.findOffering(this);
+        }
+        if (this.feedOffering != null && this.isFlying()) {
+            this.requestLanding();
+        }
+    }
+
+    /** Whether an untamed krifto has an offering waiting for it. @see #tickFeedOffering() */
+    public boolean hasFeedOfferingNearby() {
+        return this.feedOffering != null;
+    }
+
+    /**
+     * Comes down on the offering rather than wherever the heading pointed. The unaimed stoop runs
+     * forward the whole way down, so a krifto that spotted a scrap of meat from cruising altitude
+     * touched down a long way from it — often outside the radius {@link TameFeedGoal} searches, which
+     * meant it landed and then forgot what it came down for.
+     */
+    @Override
+    @Nullable
+    protected Vec3 getDescentTarget() {
+        ItemEntity offering = this.feedOffering;
+        return offering != null && offering.isAlive() ? offering.position() : null;
+    }
+
+    /**
+     * The taming flourish belongs on the ground. Its clip already pins the mob through
+     * {@code isMovementLocked()} while it plays, but that lock lifts on the same tick the clip ends
+     * and the ground-rest timer has invariably drained to zero during the feeding ritual that led
+     * here — so {@code KriftoTakeoffGoal} fires on the very next tick and the flourish's tail, plus
+     * the first flight after the new owner, happen in mid-air. Holding the ground a beat past the
+     * clip lets it finish where it was earned, and the mob takes to the air after that.
+     */
+    @Override
+    protected void onActionStart(String name) {
+        super.onActionStart(name);
+        if (ANIM_TAMED.equals(name)) {
+            this.delayTakeoff(this.clipDurationTicks(name) + TAMED_GROUND_HOLD_TICKS);
         }
     }
 
@@ -771,10 +900,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
             return super.mobInteract(player, hand);
         }
 
-        if (stack.is(Items.RABBIT) && !this.isTame()) {
-            return this.tryTame(player, stack);
-        }
-
         if (stack.is(Items.CHICKEN) && !this.isBaby() && !this.isInLove()) {
             if (!this.level().isClientSide()) {
                 this.setInLove(player);
@@ -799,22 +924,57 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return super.mobInteract(player, hand);
     }
 
-    private InteractionResult tryTame(Player player, ItemStack stack) {
-        if (!this.level().isClientSide()) {
-            stack.consume(1, player);
-            if (this.random.nextInt(3) == 0) {
-                this.tame(player);
-                this.level().broadcastEntityEvent(this, (byte) 7);
-            } else {
-                this.level().broadcastEntityEvent(this, (byte) 6);
-            }
-        }
-        return InteractionResult.SUCCESS;
-    }
-
     @Override
     public boolean isFood(@NotNull ItemStack stack) {
         return stack.is(Items.CHICKEN);
+    }
+
+    // ───────────────────────────────────────────────────── GROUND TAMING ─────
+
+    /**
+     * Feedings logged so far toward {@link #feedGoal}. Not synced — only {@link TameFeedGoal}, which
+     * is server-only, ever reads it.
+     */
+    private int feedProgress;
+    /** Rolled on the first feeding, in [{@link #FEED_GOAL_MIN}, {@link #FEED_GOAL_MAX}]. */
+    private int feedGoal;
+
+    /**
+     * Logs one feeding and returns the new total. Rolls {@link #feedGoal} on the very first call so
+     * a fresh krifto's target is not fixed at spawn (and thus not the same for every one of a kind).
+     */
+    public int incrementFeedProgress() {
+        if (this.feedProgress == 0) {
+            this.feedGoal = FEED_GOAL_MIN + this.random.nextInt(FEED_GOAL_MAX - FEED_GOAL_MIN + 1);
+        }
+        return ++this.feedProgress;
+    }
+
+    /** Meaningless before the first {@link #incrementFeedProgress()} call. */
+    public int getFeedGoal() {
+        return this.feedGoal;
+    }
+
+    // ───────────────────────────────────────────────────── THEFT ─────
+
+    /** {@link ItemStack#EMPTY} unless a heist is in progress. @see StealFromPlayerGoal */
+    public @NotNull ItemStack getStolenItem() {
+        return this.entityData.get(STOLEN_ITEM);
+    }
+
+    public void setStolenItem(@NotNull ItemStack stack) {
+        this.entityData.set(STOLEN_ITEM, stack);
+    }
+
+    /** A heist caught short by death still pays out — the loot is recoverable, not just lost. */
+    @Override
+    protected void dropCustomDeathLoot(@NotNull ServerLevel level, @NotNull DamageSource source, boolean recentlyHit) {
+        super.dropCustomDeathLoot(level, source, recentlyHit);
+        ItemStack stolen = this.getStolenItem();
+        if (!stolen.isEmpty()) {
+            this.spawnAtLocation(level, stolen);
+            this.setStolenItem(ItemStack.EMPTY);
+        }
     }
 
     // ───────────────────────────────────────────────────── BIOME COAT ─────
@@ -898,11 +1058,15 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     protected void addAdditionalSaveData(@NotNull ValueOutput output) {
         super.addAdditionalSaveData(output);
         output.putString("SpawnBiome", this.getSpawnBiomePath());
+        output.putInt("FeedProgress", this.feedProgress);
+        output.putInt("FeedGoal", this.feedGoal);
     }
 
     @Override
     protected void readAdditionalSaveData(@NotNull ValueInput input) {
         super.readAdditionalSaveData(input);
         this.setSpawnBiomePath(input.getStringOr("SpawnBiome", "default"));
+        this.feedProgress = input.getIntOr("FeedProgress", 0);
+        this.feedGoal = input.getIntOr("FeedGoal", 0);
     }
 }

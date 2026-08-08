@@ -487,8 +487,8 @@ public class TangofteroEntity extends SMOPAnimal
      * the swallow ended.
      *
      * <p>Raises the shared roaring state, not just the clip: that flag is what pins the mob in place
-     * ({@link #isMovementLocked()}) and what {@code RoarOnTargetGoal} and friends read. Playing the
-     * clip alone would leave the Tangoftero strolling through its own roar.
+     * ({@link #isMovementLocked()}). Playing the clip alone would leave the Tangoftero strolling
+     * through its own roar.
      */
     private void startArmedRoar() {
         if (!this.roarArmed) {

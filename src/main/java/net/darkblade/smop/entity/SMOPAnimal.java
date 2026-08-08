@@ -65,6 +65,12 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
     private static final EntityDataAccessor<Boolean> ROARING =
             SynchedEntityData.defineId(SMOPAnimal.class, EntityDataSerializers.BOOLEAN);
     /**
+     * Name of the one-shot scripted action currently playing ({@code "eating"}, {@code "tamed"},
+     * {@code "steal"}, {@code "squawk"}, ...), or {@code ""} for none. See {@link #startAction}.
+     */
+    private static final EntityDataAccessor<String> ACTION =
+            SynchedEntityData.defineId(SMOPAnimal.class, EntityDataSerializers.STRING);
+    /**
      * Ground movement, held for a few ticks past the last movement so a walk clip does not strobe.
      * Synced because a play condition is evaluated on both sides and {@code getDeltaMovement()} is
      * not synced for mobs.
@@ -101,6 +107,7 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
         builder.define(WANDERING, false);
         builder.define(HAS_EGG, false);
         builder.define(ROARING, false);
+        builder.define(ACTION, "");
         builder.define(MOVING, false);
     }
 
@@ -113,6 +120,9 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
         if (!this.level().isClientSide()) {
             this.sleepUrge().tick();
             this.entityData.set(MOVING, this.moveHold.tick(this.isMovingNow()));
+            if (this.actionTicksLeft > 0 && --this.actionTicksLeft <= 0) {
+                this.stopAction();
+            }
         }
 
         if (this.isOrderedToSit()) {
@@ -161,7 +171,8 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
      * is not merely wasted work, it fights the lock in {@link #travel} every tick.
      */
     public boolean isMovementLocked() {
-        return this.isInSleepCycle() || this.isRoaring();
+        return this.isInSleepCycle() || this.isRoaring()
+                || (this.isPerformingAction() && this.actionLocksMovement(this.currentAction()));
     }
 
     @Override
@@ -169,7 +180,6 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
         boolean hurt = super.hurtServer(level, source, amount);
         if (hurt && !this.isRoaring() && this.getTarget() == null) {
             this.sleepUrge().requestWake();
-            this.triggerRoar();
         }
         return hurt;
     }
@@ -459,21 +469,7 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
     /** Minimum gap between roar sounds, so a flurry of hits cannot machine-gun the sound. */
     private static final int ROAR_SOUND_MIN_GAP = 2;
 
-    private boolean shouldRoar = false;
     private int lastRoarSoundTick = -200;
-
-    /** A roar has been requested (by damage, or by acquiring a target) but has not started yet. */
-    public boolean shouldRoarNow() {
-        return this.shouldRoar;
-    }
-
-    public void triggerRoar() {
-        this.shouldRoar = true;
-    }
-
-    public void resetShouldRoar() {
-        this.shouldRoar = false;
-    }
 
     /**
      * How long the roar pins the mob, taken from the registered {@code roar} clip so the movement
@@ -507,6 +503,81 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
     @Nullable
     public SoundEvent getRoarSound() {
         return null;
+    }
+
+    // ───────────────────────────────────────────────────── SCRIPTED ACTION ─────
+
+    private int actionTicksLeft;
+
+    /**
+     * Starts a one-shot scripted action by name — {@code "eating"}, {@code "tamed"}, {@code "steal"},
+     * {@code "squawk"}, or any other clip name a subclass registers and gates on
+     * {@link #isPerforming(String)}. The action's duration is read straight off the registered clip
+     * ({@link #clipDurationTicks(String)}), the same principle {@link #getRoarDuration()} uses, so the
+     * movement lock and the animation cannot drift apart. Ends on its own once the clip's length has
+     * elapsed; call {@link #stopAction()} to cut it short (a hit landing mid-animation, its target
+     * despawning, ...).
+     *
+     * <p>Deliberately not persisted to NBT — a one-shot action interrupted by a save/load is simply
+     * dropped rather than resumed, so a reload can never leave a mob pinned by a stale action.
+     */
+    public void startAction(String name) {
+        this.entityData.set(ACTION, name);
+        int durationTicks = this.clipDurationTicks(name);
+        this.actionTicksLeft = Math.max(1, durationTicks);
+        if (!this.level().isClientSide()) {
+            this.onActionStart(name);
+        }
+        // The synced ACTION string above is what setPlayCondition(a -> isPerforming(name)) reads,
+        // but MobAnimator#tick's auto-start loop only ever starts REPEATING clips off a play
+        // condition turning true — a one-shot action registered PLAY_ONCE (eating, tamed, ...) would
+        // sit there with canPlay()==true and isPlaying()==false forever, never actually starting,
+        // while actionTicksLeft still counts down and calls stopAction() as if it had played. The
+        // caller then sees isPerforming(name) go false right on schedule with nothing ever shown.
+        // play() is the direct trigger every other PLAY_ONCE clip in this mod uses (e.g. the
+        // Tangoftero's bite from handleFeeding) — this just makes startAction do it too, once, here,
+        // instead of every caller needing to remember it.
+        //
+        // Gated on durationTicks > 0 (not a bare getByName/play call) because getByName throws on an
+        // unregistered name and durationTicks already tells us, for free, whether one was found —
+        // same safety clipDurationTicks itself already promises ("or 0 if never registered").
+        if (durationTicks > 0) {
+            this.animator().play(this.animator().getByName(name));
+        }
+    }
+
+    /** Ends the current action immediately, if any. Safe to call when none is running. */
+    public void stopAction() {
+        this.entityData.set(ACTION, "");
+        this.actionTicksLeft = 0;
+    }
+
+    /** Name of the action in progress, or {@code ""} if none. */
+    public String currentAction() {
+        return this.entityData.get(ACTION);
+    }
+
+    /** Whether the named action is the one currently playing. What {@code setPlayCondition} tests. */
+    public boolean isPerforming(String name) {
+        return this.currentAction().equals(name);
+    }
+
+    /** Whether any scripted action is currently playing. */
+    public boolean isPerformingAction() {
+        return !this.currentAction().isEmpty();
+    }
+
+    /**
+     * Whether the named action pins the mob in place while it plays — read by
+     * {@link #isMovementLocked()}. Defaults to {@code true}; override to exempt actions that have to
+     * keep steering, such as a mid-air snatch.
+     */
+    protected boolean actionLocksMovement(String name) {
+        return true;
+    }
+
+    /** Hook for a subclass to play a sound or spawn particles when an action starts. Server-only. */
+    protected void onActionStart(String name) {
     }
 
     // ───────────────────────────────────────────────────── NBT ─────
