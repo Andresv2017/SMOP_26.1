@@ -5,6 +5,12 @@
     "sounds": [
       { "name": "smop:gt/roar1", "stream": false }
     ]
+  },
+  "krifto_squawk": {
+    "subtitle": "subtitles.krifto_squawk",
+    "sounds": [
+      { "name": "smop:krifto/squawk1", "stream": false }
+    ]
   }
 }
 

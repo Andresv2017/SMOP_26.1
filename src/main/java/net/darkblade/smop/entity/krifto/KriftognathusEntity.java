@@ -1,5 +1,6 @@
 package net.darkblade.smop.entity.krifto;
 
+import net.darkblade.deluxelib.anim.AnimSound;
 import net.darkblade.deluxelib.anim.AnimSource;
 import net.darkblade.deluxelib.anim.Loop;
 import net.darkblade.deluxelib.anim.StandardAnimation;
@@ -16,6 +17,7 @@ import net.darkblade.smop.client.krifto.KriftoBabyAnimations;
 import net.darkblade.smop.entity.SMOPFlyingAnimal;
 import net.darkblade.smop.entity.ai.goal.FollowOwnerBaseGoal;
 import net.darkblade.smop.entity.ai.goal.GenericBreedGoal;
+import net.darkblade.smop.entity.ai.goal.IdleAnimationGoal;
 import net.darkblade.smop.entity.ai.goal.SMOPRandomStrollGoal;
 import net.darkblade.smop.entity.ai.goal.StealFromPlayerGoal;
 import net.darkblade.smop.entity.ai.goal.TameFeedGoal;
@@ -26,6 +28,7 @@ import net.darkblade.smop.entity.egg.CustomEggBorn;
 import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
 import net.darkblade.smop.entity.sleep.SleepPhase;
+import net.darkblade.smop.sound.SMOPSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.registries.Registries;
@@ -114,6 +117,14 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     public static final String ANIM_TAMED = "tamed";
     /** Extra ground time after the {@code tamed} clip. @see #onActionStart(String) */
     private static final int TAMED_GROUND_HOLD_TICKS = 40;
+    /** The ambient call, driven by {@link IdleAnimationGoal}. @see #registerGoals() */
+    private static final String ANIM_SQUAWK = "squawk";
+    /** Clip frame the call sounds on. @see #registerAnimations() */
+    private static final float SQUAWK_SOUND_FRAME = 3.0F;
+    /** Floor between two ambient calls, in ticks. @see #registerGoals() */
+    private static final int SQUAWK_COOLDOWN_TICKS = 120;
+    /** Random spread added on top, so the calls do not come out metronomic. */
+    private static final int SQUAWK_COOLDOWN_SPREAD_TICKS = 120;
 
     /** Wild nest defence: what it will actually see off. */
     private static final Predicate<LivingEntity> NEST_THREAT_SELECTOR =
@@ -199,7 +210,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     private void startPerching(@NotNull Player player) {
         this.entityData.set(PERCH_TARGET_ID, player.getId());
-        // The entity id above is this session's; the UUID is what survives a reload. @see #tickPerchRestore
         this.perchHostId = player.getUUID();
         this.perchRestoreTicks = 0;
         this.resetFlightState();
@@ -207,7 +217,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.setTarget(null);
         this.setDeltaMovement(Vec3.ZERO);
         this.setNoGravity(true);
-        // Not the slot-occupying overload: this rides the head, so both hands stay free.
         PerchManager.begin(player, this);
     }
 
@@ -414,8 +423,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
                 .add(Attributes.MAX_HEALTH, 10.0D)
                 .add(Attributes.FOLLOW_RANGE, 28.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.20D)
-                // Was 0.25 — barely above ground speed, which read as crawling in the air.
-                // Arpy keeps flight at ~2.2x its walk speed; matching that ratio here.
                 .add(Attributes.FLYING_SPEED, 0.45D)
                 .add(Attributes.ATTACK_SPEED, 0.4D)
                 .add(Attributes.ATTACK_KNOCKBACK, 0.1D)
@@ -462,10 +469,12 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         // the number is handed to getNavigation().moveTo(target, speed). Airborne, the pursuit is
         // flown by direct steering instead and CHASE_FLY_SPEED is what governs it; see
         // KriftoAttackGoal for why pathing loses the air.
+        // Baby exclusion lives on the goal itself now (KriftoAttackGoal#canUse) rather than as an
+        // attackCondition here — see that class note for why gating just the bite left the chase
+        // running.
         this.goalSelector.addGoal(4, new KriftoAttackGoal(2.4D)
                 .reach(2.0F)
                 .cooldown(10)
-                .attackCondition(target -> !this.isBaby())
                 // Grounded: the full-body pounce. Airborne: just the jaw snap (ANIM_BITE_FLIGHT) —
                 // "attack" crouches and pumps the legs for a takeoff off the ground that isn't there.
                 .onAttack((target, animator) -> animator.play(
@@ -491,6 +500,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         EggGoalRegistry.registerWithOwnGoal(this, SMOPBlocks.KRIFTO_EGG,
                 4, 6, true, true,
                 ProtectEggBaseGoal.EggBreakReaction.IGNORE, NEST_THREAT_SELECTOR, 10);
+
+        // Ambient call. Flagless, so the priority is presentational only — see the goal's class note.
+        this.goalSelector.addGoal(10, new IdleAnimationGoal(this, SQUAWK_COOLDOWN_TICKS, SQUAWK_COOLDOWN_SPREAD_TICKS)
+                .add(ANIM_SQUAWK)
+                .condition(mob -> !this.isFlying()));
 
         this.goalSelector.addGoal(11, new LookAtPlayerGoal(this, Player.class, 3.0F));
         this.goalSelector.addGoal(12, new RandomLookAroundGoal(this));
@@ -667,6 +681,25 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
 
         /**
+         * {@code attackCondition(target -> !isBaby())} above only reaches as far as
+         * {@code checkAndPerformAttack} — it silences the bite, not the goal. Left alone, a baby
+         * with a target (owner got hit, owner's target, its own attacker — none of the
+         * {@code targetSelector} goals check age either) still runs every tick of the chase this
+         * goal drives, right up to biting range, and simply never bites. From the outside that reads
+         * as "the baby is attacking", just with the swing missing — not as "the baby is not
+         * fighting", which is what babies not fighting should look like.
+         */
+        @Override
+        public boolean canUse() {
+            return !KriftognathusEntity.this.isBaby() && super.canUse();
+        }
+
+        @Override
+        public boolean canContinueToUse() {
+            return !KriftognathusEntity.this.isBaby() && super.canContinueToUse();
+        }
+
+        /**
          * Every tick, not every other one. {@code Mob#serverAiStep} only runs the full goal selector
          * on alternate ticks; without this the steering below writes velocity at 10 Hz against 20 Hz
          * physics and the chase visibly stutters between corrections.
@@ -798,6 +831,18 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
                 Loop.PLAY_ONCE, 1, 2.5F);
         StandardAnimation tamed = clip("tamed", () -> KriftoAnimations.tamed, () -> KriftoBabyAnimations.tamed,
                 Loop.PLAY_ONCE, 1, 2.5F);
+        // Ambient call — driven by IdleAnimationGoal, see registerGoals. Priority 1, same as
+        // eating/tamed: it only ever plays standing still, so it never actually contests locomotion,
+        // but ties are resolved by insertion order and this keeps it out of any doubt.
+        //
+        // The call itself rides the clip rather than going through getAmbientSound(), so the two can
+        // never come apart — that is what AnimSound is for. Frame 3 is where the gesture starts: the
+        // jaw cracks open at 0.15s and holds to 0.65s, and the neck hits its extreme at 0.3s.
+        StandardAnimation squawk = clip(ANIM_SQUAWK, () -> KriftoAnimations.squawk, () -> KriftoBabyAnimations.squawk,
+                Loop.PLAY_ONCE, 1, 1.25F);
+        // No explicit pitch: AnimSound then uses the entity's own voice, so the chick calls 50%
+        // higher than the adult off the same sound file, with vanilla's spread already included.
+        squawk.sound(AnimSound.at(SQUAWK_SOUND_FRAME, SMOPSounds.KRIFTO_SQUAWK.get()));
         // Adult-only: the chick model has none of these bones, so there is no baby definition to
         // fall back to and the flight flag can never be true for it.
         StandardAnimation flyIdle = adultClip("fly_idle", () -> KriftoAnimations.aidle, Loop.REPEATING, 2, 0.6F);
@@ -922,12 +967,13 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
         eating.setPlayCondition(a -> this.isPerforming("eating"));
         tamed.setPlayCondition(a -> this.isPerforming(ANIM_TAMED));
+        squawk.setPlayCondition(a -> this.isPerforming(ANIM_SQUAWK));
 
         death.blockAdditive();
 
         this.animator().register(idle, walk, sprint, swim, preparingSleep, sleep, awakening,
                 sittingDown, sitting, standingUp,
-                attack, bite, onHead, eating, tamed, flyIdle, flyIdlePerched, flight, takeOff, landing, swoop, biteFlight);
+                attack, bite, onHead, eating, tamed, squawk, flyIdle, flyIdlePerched, flight, takeOff, landing, swoop, biteFlight);
         this.animator().registerDeath(death);
     }
 
@@ -1068,6 +1114,16 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         if (ANIM_TAMED.equals(name)) {
             this.delayTakeoff(this.clipDurationTicks(name) + TAMED_GROUND_HOLD_TICKS);
         }
+    }
+
+    /**
+     * The call is brief and {@link IdleAnimationGoal} only ever starts it with the mob already
+     * stopped. Locking movement for its 1.25 s would make a krifto ignore a threat that shows up
+     * mid-call just because it happened to be mid-squawk.
+     */
+    @Override
+    protected boolean actionLocksMovement(String name) {
+        return !ANIM_SQUAWK.equals(name);
     }
 
     /**
@@ -1246,9 +1302,16 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── SOUNDS ─────
 
+    /**
+     * Null on purpose: this mob has no vanilla ambient noise. Its call is a gesture, driven by
+     * {@link IdleAnimationGoal} and carrying its own sound on the clip (see
+     * {@link #registerAnimations()}). Returning the squawk here would hand a second copy to
+     * {@code Mob#baseTick}, which rolls for it independently on each side — the desync this was all
+     * built to end.
+     */
     @Override
     protected @Nullable SoundEvent getAmbientSound() {
-        return SoundEvents.PARROT_AMBIENT;
+        return null;
     }
 
     @Override

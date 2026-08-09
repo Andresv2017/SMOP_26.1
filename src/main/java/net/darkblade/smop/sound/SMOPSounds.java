@@ -17,6 +17,11 @@ public final class SMOPSounds {
     public static final DeferredHolder<SoundEvent, SoundEvent> GT_ROAR =
             SOUNDS.register("gt_roar", () -> SoundEvent.createFixedRangeEvent(SMOP.id("gt_roar"), 64.0F));
 
+    /** The Kriftognathus's ambient call. Ordinary distance attenuation — an ambient creature sound,
+     *  not a boss cue that needs to carry. */
+    public static final DeferredHolder<SoundEvent, SoundEvent> KRIFTO_SQUAWK =
+            SOUNDS.register("krifto_squawk", () -> SoundEvent.createVariableRangeEvent(SMOP.id("krifto_squawk")));
+
     public static void register(IEventBus modEventBus) {
         SOUNDS.register(modEventBus);
     }
