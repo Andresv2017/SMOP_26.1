@@ -38,12 +38,41 @@ public final class OrbitFlightController {
     }
 
     /**
-     * Advances one tick toward {@code target}. When the resulting velocity is too small to imply a
-     * heading of its own, faces {@code fallbackFacing} instead — pass {@code null} to just hold the
-     * last heading, the right choice whenever {@code target} is never stationary relative to the mob
-     * to begin with, such as a point walking around a circle.
+     * Advances one tick toward {@code target}, turning the body to face where it is actually going.
+     * When the resulting velocity is too small to imply a heading of its own, faces
+     * {@code fallbackFacing} instead — pass {@code null} to just hold the last heading, the right
+     * choice whenever {@code target} is never stationary relative to the mob to begin with, such as
+     * a point walking around a circle.
+     *
+     * <p>Facing the heading is right for travel, and wrong for closing in on something: near the
+     * target the position error collapses, damping dominates, and the velocity turns small and
+     * erratic — or reverses outright on an overshoot, spinning the mob to face away from the very
+     * thing it flew at. Use {@link #stepFacing} for those.
      */
     public void step(SMOPFlyingAnimal mob, Vec3 target, @Nullable Vec3 fallbackFacing) {
+        Vec3 next = this.drive(mob, target);
+
+        // Face where it is going while it is going somewhere; fall back once it has settled.
+        if (next.horizontalDistanceSqr() > 1.0E-4D) {
+            mob.faceHeading(next.x, next.z, this.turnRate);
+        } else if (fallbackFacing != null) {
+            mob.faceHeading(fallbackFacing.x - mob.getX(), fallbackFacing.z - mob.getZ(), this.turnRate);
+        }
+    }
+
+    /**
+     * Flies at {@code target} while keeping the body pointed at {@code lookAt}, whatever the velocity
+     * happens to be doing. For approaches that have to <em>look</em> committed all the way in — a
+     * stoop onto prey, a snatch — where {@link #step}'s heading-facing would read as the mob losing
+     * interest, or turning its back, exactly at the moment of contact.
+     */
+    public void stepFacing(SMOPFlyingAnimal mob, Vec3 target, Vec3 lookAt) {
+        this.drive(mob, target);
+        mob.faceHeading(lookAt.x - mob.getX(), lookAt.z - mob.getZ(), this.turnRate);
+    }
+
+    /** The PD loop itself, shared by both facing modes. Returns the velocity it just applied. */
+    private Vec3 drive(SMOPFlyingAnimal mob, Vec3 target) {
         Vec3 velocity = mob.getDeltaMovement();
         Vec3 accel = target.subtract(mob.position()).scale(this.posGain).subtract(velocity.scale(this.damping));
         Vec3 next = velocity.add(accel);
@@ -52,12 +81,6 @@ public final class OrbitFlightController {
             next = next.scale(this.speedCap / speed);
         }
         mob.setDeltaMovement(next);
-
-        // Face where it is going while it is going somewhere; fall back once it has settled.
-        if (next.horizontalDistanceSqr() > 1.0E-4D) {
-            mob.faceHeading(next.x, next.z, this.turnRate);
-        } else if (fallbackFacing != null) {
-            mob.faceHeading(fallbackFacing.x - mob.getX(), fallbackFacing.z - mob.getZ(), this.turnRate);
-        }
+        return next;
     }
 }

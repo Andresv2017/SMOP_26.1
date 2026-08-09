@@ -15,8 +15,20 @@ import net.minecraft.world.entity.Mob;
  */
 public final class SleepUrge {
 
-    /** Quiet time required before (re-)entering sleep, so interruptions do not chatter. */
+    /** Quiet time required before entering sleep at all, so a mob does not drop the instant it idles. */
     private static final int SLEEP_DELAY_TICKS = 100;
+
+    /**
+     * Quiet time required after a wake, before the mob will lie down <em>again</em> — much longer than
+     * {@link #SLEEP_DELAY_TICKS}, and deliberately so.
+     *
+     * <p>Getting up is a production: on a six-phase sleeper it is a wake clip, several seconds sitting,
+     * and a stand clip. At five seconds' cooldown a mob roused by something that then wandered off
+     * would finish standing and immediately start the sit-down ceremony again — it reads as the
+     * animation glitching rather than as an animal deciding to go back to bed. Half a minute is long
+     * enough that the second nap looks like a fresh decision.
+     */
+    private static final int WOKE_UP_DELAY_TICKS = 600;
 
     private static final long NIGHT_START = 13000L;
     private static final long NIGHT_END = 23000L;
@@ -57,12 +69,13 @@ public final class SleepUrge {
         return this.night;
     }
 
-    /** Night, no target for a while, and far enough past the last rude awakening. */
+    /** Night, no target for a while, and far enough past the last waking. */
     public boolean wantsToSleep() {
         if (!this.night || this.ticksSinceNoTarget < SLEEP_DELAY_TICKS + this.stagger) {
             return false;
         }
-        return this.ticksSinceInterrupted < 0 || this.ticksSinceInterrupted >= SLEEP_DELAY_TICKS;
+        // Never woken this session: nothing to wait out.
+        return this.ticksSinceInterrupted < 0 || this.ticksSinceInterrupted >= WOKE_UP_DELAY_TICKS;
     }
 
     /** Something woke the mob from outside the goal — taking damage, for instance. */

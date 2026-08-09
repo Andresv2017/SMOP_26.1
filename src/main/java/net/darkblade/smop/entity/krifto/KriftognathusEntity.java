@@ -25,7 +25,9 @@ import net.darkblade.smop.entity.ai.goal.flying.FollowOwnerFlyingGoal;
 import net.darkblade.smop.entity.egg.CustomEggBorn;
 import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
+import net.darkblade.smop.entity.sleep.SleepPhase;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -69,6 +71,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -103,6 +106,7 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     /** Clip names the flight lifecycle drives, by the same convention as {@code ANIM_SLEEP} and co. */
     private static final String ANIM_START_FLIGHT = "start_flight";
     private static final String ANIM_LANDING = "landing";
+    /** The committed power dive. Not part of the landing cycle — see {@link #onSeekGroundBegin()}. */
     private static final String ANIM_SWOOP = "swoop";
     /** Jaw-only overlay {@code attack} swaps for on a mid-air bite — see {@link #registerAnimations()}. */
     private static final String ANIM_BITE_FLIGHT = "bite_flight";
@@ -110,8 +114,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     public static final String ANIM_TAMED = "tamed";
     /** Extra ground time after the {@code tamed} clip. @see #onActionStart(String) */
     private static final int TAMED_GROUND_HOLD_TICKS = 40;
-    /** Also the {@code startAction} name StealFromPlayerGoal snatches with. */
-    public static final String ANIM_STEAL = "steal";
 
     /** Wild nest defence: what it will actually see off. */
     private static final Predicate<LivingEntity> NEST_THREAT_SELECTOR =
@@ -120,6 +122,13 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     /** Feedings required to complete the ground-taming ritual — see {@link TameFeedGoal}. */
     private static final int FEED_GOAL_MIN = 3;
     private static final int FEED_GOAL_MAX = 4;
+
+    /**
+     * How much longer the sleep-cycle transitions take than they were authored. The clips are 0.3–0.5 s
+     * — six to ten ticks — which is quick enough that the mob reads as snapping between poses rather
+     * than moving between them. One knob for all four; see {@link #slowTransition}.
+     */
+    private static final float TRANSITION_SLOWDOWN = 2.5F;
 
     private static final EntityDataAccessor<String> SPAWN_BIOME =
             SynchedEntityData.defineId(KriftognathusEntity.class, EntityDataSerializers.STRING);
@@ -190,6 +199,9 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     private void startPerching(@NotNull Player player) {
         this.entityData.set(PERCH_TARGET_ID, player.getId());
+        // The entity id above is this session's; the UUID is what survives a reload. @see #tickPerchRestore
+        this.perchHostId = player.getUUID();
+        this.perchRestoreTicks = 0;
         this.resetFlightState();
         this.getNavigation().stop();
         this.setTarget(null);
@@ -199,21 +211,89 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         PerchManager.begin(player, this);
     }
 
-    /**
-     * Releases the perch. Also the recovery path for a host who logged out or died: the entity id
-     * this was perched on is meaningless across a reload, so nothing about the perch is written to
-     * NBT and {@link #tickPerch} drops it the moment the host cannot be resolved.
-     */
+    /** Deliberate release — sneaking, or the bird being told to get off. Forgets the host with it. */
     private void stopPerching() {
+        this.endPerch(true);
+    }
+
+    /**
+     * Releases the perch, optionally keeping the host on file.
+     *
+     * <p>The distinction matters at exactly one moment: a player logging out. {@link #tickPerch} drops
+     * the perch as soon as the host stops resolving, and if that tick lands before the world is
+     * written, clearing the UUID there would erase the very thing
+     * {@link #addAdditionalSaveData} needs — the bird would come back off the head every single time,
+     * which is the bug this pairs with. So a host who merely <em>vanished</em> is remembered, and only
+     * an explicit dismount forgets.
+     */
+    private void endPerch(boolean forgetHost) {
         if (this.level().getEntity(this.getPerchTargetId()) instanceof Player host) {
             PerchManager.end(host);
             this.clearGlideEffect(host);
         }
         this.entityData.set(PERCH_TARGET_ID, -1);
         this.entityData.set(PERCH_GLIDING, false);
+        if (forgetHost) {
+            this.perchHostId = null;
+        }
+        this.perchRestoreTicks = 0;
         this.setNoGravity(false);
         this.resetFallDistance();
         this.groundRestTimer = this.computeGroundRestTicks();
+    }
+
+    // ───────────────────────────────────────────────────── PERCH ACROSS RELOAD ─────
+
+    /**
+     * UUID of the host this is perched on, or {@code null}. The synced {@link #PERCH_TARGET_ID} is an
+     * <em>entity id</em>, which is assigned per session and means nothing after a reload — this is the
+     * half of the perch that can actually be written to NBT.
+     */
+    @Nullable
+    private UUID perchHostId;
+    /** Ticks left to find {@link #perchHostId} after a reload before giving up. @see #tickPerchRestore */
+    private int perchRestoreTicks;
+
+    /** How long to wait for the host to turn up. Long enough for a login to finish, short enough that
+     *  a bird whose owner never returns is not stuck waiting. */
+    private static final int PERCH_RESTORE_WINDOW_TICKS = 100;
+
+    /**
+     * Puts the bird back on the head it was on before the world was saved.
+     *
+     * <p>Perching is held in two places, and only one of them survives: the synced entity id (gone —
+     * entity data is not persisted) and {@code PerchManager}'s registry (gone — an in-memory
+     * {@code Map<UUID, Perchable>}). So the perch has to be rebuilt from the one durable thing, the
+     * host's UUID, once that player is resolvable again. The player usually loads before the entity
+     * ticks, so in practice this succeeds on the first attempt and the bird is simply still there.
+     *
+     * <p>{@link #readAdditionalSaveData} has already dropped the no-gravity by this point, so a host
+     * who never appears leaves a bird that falls normally rather than one hanging in the sky — which
+     * is exactly the bug this pairs with. Failing to restore is therefore safe, and bounded.
+     */
+    private void tickPerchRestore() {
+        if (this.perchHostId == null || this.isPerched() || this.perchRestoreTicks <= 0) {
+            return;
+        }
+        if (this.isBaby()) {
+            // Can't happen through mobInteract (adult-only, see there), but this reads the saved
+            // UUID back unconditionally, so it gets its own check rather than trusting that gate
+            // stays the only path in here forever. Forgets the host outright rather than leaving the
+            // countdown to run out on its own: a baby is never getting a host back regardless of how
+            // long tickPerchRestore keeps being asked, so there is nothing to wait out.
+            this.perchHostId = null;
+            this.perchRestoreTicks = 0;
+            return;
+        }
+        Player host = this.level().getPlayerByUUID(this.perchHostId);
+        if (host != null && host.isAlive() && this.isOwnedBy(host)) {
+            this.startPerching(host);
+            return;
+        }
+        // Window closed without the host turning up. The UUID is deliberately NOT cleared: they may
+        // simply be offline, or in another dimension, and the next load gets a fresh window. Nothing
+        // is left running in the meantime — the countdown is only ever armed by a load.
+        this.perchRestoreTicks--;
     }
 
     /**
@@ -236,9 +316,14 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
      */
     private void tickPerch() {
         if (!(this.level().getEntity(this.getPerchTargetId()) instanceof Player host) || !host.isAlive()) {
-            this.stopPerching();
+            // Gone, not dismissed — a logout looks exactly like this. Keep the host on file so the
+            // bird is back on their head next time they load in. @see #endPerch
+            this.endPerch(false);
             return;
         }
+        // Sneaking is THE way off, and the only one. Right-clicking the bird does not toggle it back
+        // down (see #mobInteract) — a hitbox welded to your own head is awkward to aim at, and the
+        // library's own right-click-anywhere release is the Owl's gesture, gated to the Owl.
         if (host.isShiftKeyDown()) {
             this.stopPerching();
             return;
@@ -373,13 +458,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, this.createSleepGoal());
         this.registerFlightGoals(2, 7, 3);
-        // Speed here is what actually governs mid-air pursuit: AnimatableMeleeAttackGoal (via
-        // vanilla MeleeAttackGoal) hands this straight to getNavigation().moveTo(target, speed),
-        // which SmoothFlyingMoveControl multiplies by the FLYING_SPEED attribute every tick — the
-        // one goal with priority over this is landing, so this is the number that decides how fast
-        // Krifto closes on whatever it is chasing. 1.8 -> 2.2 for a bit more urgency once it has a
-        // target, without touching FLYING_SPEED itself and speeding up ordinary cruising too.
-        this.goalSelector.addGoal(4, new AnimatableMeleeAttackGoal(this, 2.4D, true)
+        // Speed modifier for the GROUND chase only — on foot this is a normal pathfinding pursuit and
+        // the number is handed to getNavigation().moveTo(target, speed). Airborne, the pursuit is
+        // flown by direct steering instead and CHASE_FLY_SPEED is what governs it; see
+        // KriftoAttackGoal for why pathing loses the air.
+        this.goalSelector.addGoal(4, new KriftoAttackGoal(2.4D)
                 .reach(2.0F)
                 .cooldown(10)
                 .attackCondition(target -> !this.isBaby())
@@ -552,6 +635,66 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
+    /**
+     * The melee goal, with the airborne half of the chase flown rather than pathed.
+     *
+     * <p><b>Why.</b> {@code MeleeAttackGoal} pursues by {@code getNavigation().moveTo(target, speed)}.
+     * On foot that is exactly right. In the air it means {@code SmartFlyingNavigation} pathfinds a
+     * polyline through 3D air nodes and the mob then flies that polyline — so it corners around
+     * waypoints instead of cutting the straight line, re-plans on a 4-20 tick timer while the target
+     * keeps moving, and stair-steps between nodes. That is the clumsy, sluggish pursuit; DeluxeLib's
+     * own {@code steerTowards} note calls out the same "stair-step bouncing that flying path
+     * navigation causes", and the Owl's dive attack sidesteps it by never pathing at all.
+     *
+     * <p><b>How.</b> {@code super.tick()} still runs in full — it owns the look-at, the attack
+     * interval, the cooldown and {@code checkAndPerformAttack}, and its counters are private, so
+     * skipping it would let the Krifto attack exactly once. What changes is only what happens after:
+     * while flying, the path it just built is discarded and the mob is steered straight at the target
+     * instead. Dropping the path is what keeps {@code SmoothFlyingMoveControl} out of the way — with
+     * no path, {@code PathNavigation#tick} never calls {@code setWantedPosition}, and that control
+     * flips itself back to {@code WAIT} after a single tick rather than fighting the velocity written
+     * here.
+     */
+    private class KriftoAttackGoal extends AnimatableMeleeAttackGoal {
+
+        /** Blocks per tick of the air chase. Well over cruise: this is a stoop, not a commute. */
+        private static final double CHASE_FLY_SPEED = 0.85D;
+        /** Heading blend per tick. High enough to stay glued to a dodging target without snapping. */
+        private static final double CHASE_ACCEL = 0.35D;
+
+        KriftoAttackGoal(double groundSpeed) {
+            super(KriftognathusEntity.this, groundSpeed, true);
+        }
+
+        /**
+         * Every tick, not every other one. {@code Mob#serverAiStep} only runs the full goal selector
+         * on alternate ticks; without this the steering below writes velocity at 10 Hz against 20 Hz
+         * physics and the chase visibly stutters between corrections.
+         */
+        @Override
+        public boolean requiresUpdateEveryTick() {
+            return true;
+        }
+
+        @Override
+        public void tick() {
+            super.tick();
+            if (!KriftognathusEntity.this.isFlying()) {
+                return;
+            }
+            LivingEntity target = KriftognathusEntity.this.getTarget();
+            if (target == null) {
+                return;
+            }
+            KriftognathusEntity.this.getNavigation().stop();
+            // Aim at the upper body rather than the feet, so the beak arrives where the hitbox is
+            // thickest instead of skimming along the ground under a tall target.
+            KriftognathusEntity.this.steerTowards(
+                    target.position().add(0.0D, target.getBbHeight() * 0.6D, 0.0D),
+                    CHASE_FLY_SPEED, CHASE_ACCEL);
+        }
+    }
+
     // ───────────────────────────────────────────────────── FLIGHT ANIMATION HOOKS ─────
 
     @Override
@@ -559,9 +702,22 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.playIfRegistered(ANIM_START_FLIGHT);
     }
 
-    /** The stoop into the landing approach — the one clip 1.20.1 registered and never played. */
+    /**
+     * The descent toward a landing deliberately plays <b>nothing</b>: the ordinary flight cycle is
+     * {@code start_flight} → {@code fly_idle}/{@code flight} → {@code landing}, and the hover simply
+     * keeps running until the landing flare takes over. {@code swoop} is not part of it — that clip is
+     * a committed power dive, reserved for {@link #playSwoopClip()}.
+     */
     @Override
     protected void onSeekGroundBegin() {
+    }
+
+    /**
+     * The power dive, for {@code StealFromPlayerGoal} committing to its run at a player. This is the
+     * only thing that plays {@code swoop}; {@code playIfRegistered} is protected, hence this thin
+     * opening for the goal to reach it.
+     */
+    public void playSwoopClip() {
         this.playIfRegistered(ANIM_SWOOP);
     }
 
@@ -595,15 +751,38 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         StandardAnimation swim = clip("swim", () -> KriftoAnimations.swim, () -> KriftoBabyAnimations.swim,
                 Loop.REPEATING, 2, 2.4F);
 
-        StandardAnimation preparingSleep = clip("preparing_sleep",
-                () -> KriftoAnimations.sleep_preparing, () -> KriftoBabyAnimations.sleep_preparing,
-                Loop.PLAY_ONCE, 1, 2.5F);
+        // Six-phase sleep: sitting_down -> sitting -> preparing_sleep -> sleep -> awakening ->
+        // standing_up. SleepGoal assembles that from whichever clips are registered here; see
+        // SleepPhase. Both rigs author all six now, so chick and adult run the same cycle.
+        //
+        // Durations are the ADULT clip lengths, and they have to stay that way: BaseAnimation stops a
+        // clip when its declared duration runs out, so a number longer than the clip freezes the mob
+        // on the last frame and a shorter one cuts the motion. These were 2.5/4.0/3.5 — the lengths
+        // from before the re-export — which left the adult held still for two seconds lying down and
+        // over three getting up.
+        // The four transitions are stretched by TRANSITION_SLOWDOWN; the two holds (sleep, sit) play
+        // at their authored rate, since a loop's speed is its own business. slowTransition takes the
+        // AUTHORED length — the stretched duration and the playback rate are derived together, and
+        // must be, or the clip gets cut partway through.
+        StandardAnimation preparingSleep = slowTransition("preparing_sleep",
+                () -> KriftoAnimations.sleep_preparing, () -> KriftoBabyAnimations.sleep_preparing, 0.5F);
         StandardAnimation sleep = clip("sleep", () -> KriftoAnimations.sleep, () -> KriftoBabyAnimations.sleep,
-                Loop.REPEATING, 1, 4.0F);
-        StandardAnimation awakening = clip("awakening", () -> KriftoAnimations.awakening, () -> KriftoBabyAnimations.awakening,
-                Loop.PLAY_ONCE, 1, 3.5F);
+                Loop.REPEATING, 1, 2.0F);
+        StandardAnimation awakening = slowTransition("awakening",
+                () -> KriftoAnimations.awakening, () -> KriftoBabyAnimations.awakening, 0.3F);
+        StandardAnimation sittingDown = slowTransition("sitting",
+                () -> KriftoAnimations.sitting, () -> KriftoBabyAnimations.sitting, 0.3F);
+        StandardAnimation sitting = clip("sit", () -> KriftoAnimations.sit, () -> KriftoBabyAnimations.sit,
+                Loop.REPEATING, 1, 2.0F);
+        StandardAnimation standingUp = slowTransition("standing_up",
+                () -> KriftoAnimations.standing_up, () -> KriftoBabyAnimations.standing_up, 0.3F);
 
-        StandardAnimation attack = clip("attack", () -> KriftoAnimations.attack, () -> KriftoBabyAnimations.attack,
+        // The ground pounce is the newer sprint_bite clip on both rigs; the old attack clip it
+        // replaces is gone from either animation file. The registered NAME stays "attack" — that is
+        // what AnimatableMeleeAttackGoal looks up by, and what the HitWindow below is applied to.
+        // Same shape as the clip it replaces (0.4 s, one-shot), so ATTACK_SECONDS and the bite window
+        // carry over untouched.
+        StandardAnimation attack = clip("attack", () -> KriftoAnimations.sprint_bite, () -> KriftoBabyAnimations.sprint_bite,
                 Loop.PLAY_ONCE, 0, ATTACK_SECONDS);
         StandardAnimation bite = clip("bite", () -> KriftoAnimations.bite, () -> KriftoBabyAnimations.bite,
                 Loop.PLAY_ONCE, 0, 0.75F);
@@ -619,10 +798,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
                 Loop.PLAY_ONCE, 1, 2.5F);
         StandardAnimation tamed = clip("tamed", () -> KriftoAnimations.tamed, () -> KriftoBabyAnimations.tamed,
                 Loop.PLAY_ONCE, 1, 2.5F);
-        // Adult-only, same reasoning as the flight family below: StealFromPlayerGoal never engages a
-        // baby (see its canUse()), so there is no call to author or fall back to a chick clip.
-        StandardAnimation steal = adultClip(ANIM_STEAL, () -> KriftoAnimations.steal, Loop.PLAY_ONCE, 1, 0.65F);
-
         // Adult-only: the chick model has none of these bones, so there is no baby definition to
         // fall back to and the flight flag can never be true for it.
         StandardAnimation flyIdle = adultClip("fly_idle", () -> KriftoAnimations.aidle, Loop.REPEATING, 2, 0.6F);
@@ -738,14 +913,21 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         sleep.setPlayCondition(a -> this.isSleeping() || this.isPreparingSleep());
         preparingSleep.setNextAnimation(ANIM_SLEEP);
 
+        sittingDown.setPlayCondition(a -> this.sleepPhase() == SleepPhase.SITTING_DOWN);
+        // Same trick as sleep above: eligible through the clip that leads into it, so the loop is
+        // already armed on the tick the one-shot ends.
+        sitting.setPlayCondition(a -> this.isSitting() || this.sleepPhase() == SleepPhase.SITTING_DOWN);
+        standingUp.setPlayCondition(a -> this.sleepPhase() == SleepPhase.STANDING_UP);
+        sittingDown.setNextAnimation("sit");
+
         eating.setPlayCondition(a -> this.isPerforming("eating"));
         tamed.setPlayCondition(a -> this.isPerforming(ANIM_TAMED));
-        steal.setPlayCondition(a -> this.isPerforming(ANIM_STEAL));
 
         death.blockAdditive();
 
         this.animator().register(idle, walk, sprint, swim, preparingSleep, sleep, awakening,
-                attack, bite, onHead, eating, tamed, steal, flyIdle, flyIdlePerched, flight, takeOff, landing, swoop, biteFlight);
+                sittingDown, sitting, standingUp,
+                attack, bite, onHead, eating, tamed, flyIdle, flyIdlePerched, flight, takeOff, landing, swoop, biteFlight);
         this.animator().registerDeath(death);
     }
 
@@ -770,6 +952,31 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return new StandardAnimation(name, new AnimSource(adult), loop, 0, priority, seconds);
     }
 
+    /**
+     * Builds one of the sleep-cycle transitions, stretched by {@link #TRANSITION_SLOWDOWN}.
+     *
+     * <p><b>Two numbers, one decision — which is why this exists rather than setting them at the call
+     * sites.</b> {@code playbackSpeed} is a purely client-side visual rate ({@code BlendState} scales
+     * its own clock by it) and has no effect whatsoever on {@code durationTicks}, which is what stops
+     * the animation and what {@code SleepGoal} times the phase by. Slowing only the first truncates
+     * the motion: the clip is cut at its authored length having played a fraction of the way through.
+     * So the authored length goes in once and both come out of it.
+     */
+    private StandardAnimation slowTransition(String name, Supplier<Object> adult, Supplier<Object> baby,
+                                             float authoredSeconds) {
+        return slowed(this.clip(name, adult, baby, Loop.PLAY_ONCE, 1, authoredSeconds * TRANSITION_SLOWDOWN));
+    }
+
+    /** @see #slowTransition */
+    private StandardAnimation slowAdultTransition(String name, Supplier<Object> adult, float authoredSeconds) {
+        return slowed(this.adultClip(name, adult, Loop.PLAY_ONCE, 1, authoredSeconds * TRANSITION_SLOWDOWN));
+    }
+
+    private static StandardAnimation slowed(StandardAnimation anim) {
+        anim.playbackSpeed(1.0F / TRANSITION_SLOWDOWN);
+        return anim;
+    }
+
     // ───────────────────────────────────────────────────── TICK ─────
 
     @Override
@@ -779,6 +986,7 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
             return;
         }
         this.tickFeedOffering();
+        this.tickPerchRestore();
         if (this.isPerched()) {
             this.tickPerch();
         } else {
@@ -910,13 +1118,14 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
         // Grab on: perch it over the owner's head as a parachute (see #getPerchTargetId). Owner-only,
         // and adult-only since the chick model has no rig for the grip pose.
-        if (this.isTame() && this.isOwnedBy(player) && !this.isBaby() && !this.isPassenger()) {
+        //
+        // Mounting only — this deliberately does NOT toggle. Sneaking is the one way back off (see
+        // #tickPerch), so that letting go is a single, always-available gesture rather than something
+        // that also depends on managing to click a hitbox riding your own head.
+        if (this.isTame() && this.isOwnedBy(player) && !this.isBaby() && !this.isPassenger()
+                && !this.isPerched()) {
             if (!this.level().isClientSide()) {
-                if (this.isPerched()) {
-                    this.stopPerching();
-                } else {
-                    this.startPerching(player);
-                }
+                this.startPerching(player);
             }
             return InteractionResult.SUCCESS;
         }
@@ -1060,6 +1269,9 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         output.putString("SpawnBiome", this.getSpawnBiomePath());
         output.putInt("FeedProgress", this.feedProgress);
         output.putInt("FeedGoal", this.feedGoal);
+        if (this.perchHostId != null) {
+            output.store("PerchHost", UUIDUtil.CODEC, this.perchHostId);
+        }
     }
 
     @Override
@@ -1068,5 +1280,19 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.setSpawnBiomePath(input.getStringOr("SpawnBiome", "default"));
         this.feedProgress = input.getIntOr("FeedProgress", 0);
         this.feedGoal = input.getIntOr("FeedGoal", 0);
+
+        this.perchHostId = input.read("PerchHost", UUIDUtil.CODEC).orElse(null);
+        this.perchRestoreTicks = this.perchHostId != null ? PERCH_RESTORE_WINDOW_TICKS : 0;
+
+        // Drop the perch's no-gravity unconditionally, and let tickPerchRestore put it back only if it
+        // actually finds the host. Perching is the sole reason a GROUNDED Krifto floats, and unlike the
+        // synced perch state, noGravity IS persisted by vanilla — so on its own it comes back set with
+        // nothing left to justify it, and the bird hangs in the air playing the ground idle. That is
+        // the same failure SMOPFlyingAnimal's own flight restore exists to prevent, reached by the one
+        // path it does not cover. The isFlying() guard is what keeps this from undoing that restore,
+        // which runs in the super call above and sets no-gravity for a legitimately airborne mob.
+        if (!this.isFlying()) {
+            this.setNoGravity(false);
+        }
     }
 }

@@ -557,6 +557,13 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
      * Smooth arcs, none of the stair-stepping that flying path navigation produces — stop the
      * navigation first and call this every tick from a goal.
      *
+     * <p>This is the <b>chase</b> primitive, and deliberately not the same shape as
+     * {@code OrbitFlightController}'s PD loop. That one is a spring: its speed falls off as the
+     * position error shrinks, which is what lets it settle onto a point without ringing — and exactly
+     * what makes it wrong for a pursuit, where closing the last few blocks is when the mob should be
+     * fastest. This one always asks for the full {@code speed} toward the target and only smooths the
+     * direction. Use the PD loop to hold a station, this to run something down.
+     *
      * @param accel per-tick blend toward the desired velocity; 0.1–0.15 glides, 0.3+ darts
      */
     protected void steerTowards(Vec3 target, double speed, double accel) {
@@ -590,6 +597,7 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         this.setYRot(newYaw);
         this.yBodyRot = newYaw;
     }
+
 
     // ───────────────────────────────────────────────────── VISUAL TILT ─────
 
@@ -772,8 +780,7 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
      */
     @Override
     protected SleepGoal<SMOPAnimal> createSleepGoal() {
-        return new SleepGoal<SMOPAnimal>(this, this.sleepUrge(),
-                this::getPreparingSleepDuration, this::getAwakeningDuration) {
+        return new SleepGoal<SMOPAnimal>(this, this.sleepUrge()) {
             @Override
             public boolean canUse() {
                 return !SMOPFlyingAnimal.this.isFlying() && super.canUse();

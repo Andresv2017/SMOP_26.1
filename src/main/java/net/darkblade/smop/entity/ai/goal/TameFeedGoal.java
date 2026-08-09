@@ -57,6 +57,12 @@ public class TameFeedGoal extends Goal {
     private static final double EAT_REACH = 1.0D;
     /** Ticks before the next search after a bite that did not finish the ritual. */
     private static final int RETRY_COOLDOWN_TICKS = 40;
+    /**
+     * Walking speed of the approach. The same modifier {@code SMOPRandomStrollGoal} is registered
+     * with, so crossing the ground for a meal looks exactly like crossing it for nothing — which is
+     * the point: anything less reads as the mob dawdling toward food it supposedly wants.
+     */
+    private static final double APPROACH_SPEED = 1.0D;
     /** Ticks between re-paths while closing on the offering. @see #tick() */
     private static final int REPATH_INTERVAL_TICKS = 10;
     /** Ticks of failing to reach the offering before giving up on it. @see #tick() */
@@ -70,6 +76,8 @@ public class TameFeedGoal extends Goal {
     private boolean biting;
     /** Ticks spent closing on {@link #targetItem} without reaching it. @see #tick() */
     private int approachTicks;
+    /** Counts down to the next re-path. @see #tick() */
+    private int repathCooldown;
 
     public TameFeedGoal(KriftognathusEntity mob) {
         this.mob = mob;
@@ -93,10 +101,25 @@ public class TameFeedGoal extends Goal {
                 && !this.mob.isFlying();
     }
 
+    /**
+     * Every tick, not every other one. The last stretch to the offering is steered by hand through
+     * {@code MoveControl#setWantedPosition} (see {@link #tick()}), and {@code Mob#serverAiStep} only
+     * runs the full goal selector on alternate ticks — so without this that steering, and the re-path
+     * countdown with it, run at half rate. Not wrong, but it is the other half of why the walk over
+     * looked sluggish.
+     */
+    @Override
+    public boolean requiresUpdateEveryTick() {
+        return true;
+    }
+
     @Override
     public void start() {
         this.biting = false;
         this.approachTicks = 0;
+        // Zero, not the full interval: path on the very first tick rather than standing still for
+        // half a second deciding to.
+        this.repathCooldown = 0;
     }
 
     @Override
@@ -143,9 +166,17 @@ public class TameFeedGoal extends Goal {
         // navigation, then the move control, so this wanted position is overwritten while a real
         // path is being followed and only takes effect once the navigation has given up — exactly
         // the case that was stalling.
-        this.mob.getMoveControl().setWantedPosition(item.getX(), item.getY(), item.getZ(), 1.0D);
-        if (this.mob.getNavigation().isDone() && this.mob.tickCount % REPATH_INTERVAL_TICKS == 0) {
-            this.mob.getNavigation().moveTo(item.getX(), item.getY(), item.getZ(), 1.0D);
+        this.mob.getMoveControl().setWantedPosition(item.getX(), item.getY(), item.getZ(), APPROACH_SPEED);
+
+        // Re-pathed on a plain countdown, NOT gated on the navigation having finished. Gating on
+        // isDone() was what made the walk look sluggish: a path that ends a block short completes
+        // constantly, and the mob then waited out the rest of the interval — up to nine idle ticks —
+        // before asking for the next one. Repeated the whole way over, that stop-start reads as a
+        // much slower animal, even though the speed modifier was always the stroll goal's. Keeping a
+        // live path at all times means it just walks.
+        if (--this.repathCooldown <= 0) {
+            this.repathCooldown = REPATH_INTERVAL_TICKS;
+            this.mob.getNavigation().moveTo(item.getX(), item.getY(), item.getZ(), APPROACH_SPEED);
         }
 
         if (++this.approachTicks > APPROACH_GIVE_UP_TICKS) {

@@ -8,6 +8,7 @@ import net.darkblade.deluxelib.anim.MobAnimator;
 import net.darkblade.smop.block.AbstractEggBlock;
 import net.darkblade.smop.entity.sleep.ISleepingEntity;
 import net.darkblade.smop.entity.sleep.SleepGoal;
+import net.darkblade.smop.entity.sleep.SleepPhase;
 import net.darkblade.smop.entity.sleep.SleepUrge;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -52,12 +53,14 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
 
     // ───────────────────────────────────────────────────── SYNCED STATE ─────
 
-    private static final EntityDataAccessor<Boolean> SLEEPING =
-            SynchedEntityData.defineId(SMOPAnimal.class, EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Boolean> PREPARING_SLEEP =
-            SynchedEntityData.defineId(SMOPAnimal.class, EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Boolean> AWAKENING =
-            SynchedEntityData.defineId(SMOPAnimal.class, EntityDataSerializers.BOOLEAN);
+    /**
+     * Ordinal of the current {@link SleepPhase}. One field for the whole cycle, rather than a flag per
+     * phase: the cycle is a state machine and only ever occupies one of its states, so three booleans
+     * were already able to encode nonsense, and six would have been worse. Same call as {@link #ACTION}
+     * below.
+     */
+    private static final EntityDataAccessor<Integer> SLEEP_PHASE =
+            SynchedEntityData.defineId(SMOPAnimal.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> WANDERING =
             SynchedEntityData.defineId(SMOPAnimal.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> HAS_EGG =
@@ -101,9 +104,7 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
     @Override
     protected void defineSynchedData(SynchedEntityData.@NotNull Builder builder) {
         super.defineSynchedData(builder);
-        builder.define(SLEEPING, false);
-        builder.define(PREPARING_SLEEP, false);
-        builder.define(AWAKENING, false);
+        builder.define(SLEEP_PHASE, SleepPhase.NONE.ordinal());
         builder.define(WANDERING, false);
         builder.define(HAS_EGG, false);
         builder.define(ROARING, false);
@@ -262,33 +263,29 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
     // ───────────────────────────────────────────────────── SLEEP ─────
 
     @Override
+    public SleepPhase sleepPhase() {
+        return SleepPhase.byId(this.entityData.get(SLEEP_PHASE));
+    }
+
+    @Override
+    public void setSleepPhase(SleepPhase phase) {
+        this.entityData.set(SLEEP_PHASE, phase.ordinal());
+    }
+
+    /**
+     * Derived like the rest of the readers, but declared here rather than defaulted on the interface:
+     * this one also overrides {@code LivingEntity#isSleeping()}, which vanilla defines off the bed
+     * system. Keeping the override is deliberate — it is what makes vanilla see these mobs as asleep.
+     */
+    @Override
     public boolean isSleeping() {
-        return this.entityData.get(SLEEPING);
+        return this.sleepPhase() == SleepPhase.SLEEPING;
     }
 
+    /** ~3 to 8 seconds. @see ISleepingEntity#getSittingDuration() */
     @Override
-    public void setSleeping(boolean sleeping) {
-        this.entityData.set(SLEEPING, sleeping);
-    }
-
-    @Override
-    public boolean isPreparingSleep() {
-        return this.entityData.get(PREPARING_SLEEP);
-    }
-
-    @Override
-    public void setPreparingSleep(boolean preparing) {
-        this.entityData.set(PREPARING_SLEEP, preparing);
-    }
-
-    @Override
-    public boolean isAwakening() {
-        return this.entityData.get(AWAKENING);
-    }
-
-    @Override
-    public void setAwakening(boolean awakening) {
-        this.entityData.set(AWAKENING, awakening);
+    public int getSittingDuration() {
+        return 60 + this.random.nextInt(100);
     }
 
     private SleepUrge sleepUrge;
@@ -326,29 +323,30 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
      * preempted — gate those on {@link #isInSleepCycle()} by hand, exactly as vanilla's fox does.
      */
     protected SleepGoal<SMOPAnimal> createSleepGoal() {
-        return new SleepGoal<>(this, this.sleepUrge(),
-                () -> this.getPreparingSleepDuration(), () -> this.getAwakeningDuration());
+        return new SleepGoal<>(this, this.sleepUrge());
     }
 
     /**
-     * Ticks the settling-down clip runs for, read off the clip itself.
+     * Phase length from the phase's own clip, which is what keeps the two from drifting: a phase
+     * longer than its clip leaves the mob holding the last frame for the difference, a shorter one
+     * cuts the clip mid-motion. Same principle as {@code MobAnimator#startStagger} sizing its stun
+     * window from the chosen animation — two numbers that must be equal are one number.
      *
-     * <p>Same principle as {@code MobAnimator#startStagger}, which sizes its stun window from the
-     * chosen animation's duration rather than a parallel constant: two numbers that must be equal
-     * are one number. A phase longer than its clip leaves the mob holding the last frame for the
-     * difference; a shorter one cuts the clip mid-motion. 0 (no clip registered) disables the phase.
-     *
-     * <p>Resolved lazily — {@code registerGoals()} runs from {@code Mob}'s constructor, long before
-     * {@code registerAnimations()} is fired by {@code EntityJoinLevelEvent}, so the goal is handed
-     * suppliers and asks at the moment each phase starts.
+     * <p>Sitting is the one phase whose length is a behaviour rather than an animation: the clip
+     * loops, so how long to sit is a decision ({@link #getSittingDuration()}). The clip is still what
+     * decides whether the phase exists at all.
      */
-    protected int getPreparingSleepDuration() {
-        return this.clipDurationTicks(ANIM_PREPARING_SLEEP);
-    }
-
-    /** Ticks the getting-up clip runs for. @see #getPreparingSleepDuration() */
-    protected int getAwakeningDuration() {
-        return this.clipDurationTicks(ANIM_AWAKENING);
+    @Override
+    public int sleepPhaseDuration(SleepPhase phase) {
+        String clip = phase.clipName();
+        if (clip == null) {
+            return 0;
+        }
+        int clipTicks = this.clipDurationTicks(clip);
+        if (phase == SleepPhase.SITTING) {
+            return clipTicks > 0 ? this.getSittingDuration() : 0;
+        }
+        return clipTicks;
     }
 
     /**
@@ -365,26 +363,21 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
         return 0;
     }
 
-    /** Clip names the sleep cycle drives. Register a clip under one of these and it plays itself. */
-    public static final String ANIM_PREPARING_SLEEP = "preparing_sleep";
-    public static final String ANIM_SLEEP = "sleep";
-    public static final String ANIM_AWAKENING = "awakening";
+    /** Clip names the sleep cycle drives now live on {@link SleepPhase#clipName()}. */
+    public static final String ANIM_SLEEP = SleepPhase.SLEEPING.clipName();
     /** Not driven by the sleep cycle, but its length sizes {@link #getRoarDuration()} the same way. */
     public static final String ANIM_ROAR = "roar";
 
+    /**
+     * Plays the clip named after the phase. Entirely mechanical, which is why the three per-phase
+     * hooks this replaced were pure indirection — every one of them was this same line.
+     */
     @Override
-    public void onPreparingSleepBegin() {
-        this.playIfRegistered(ANIM_PREPARING_SLEEP);
-    }
-
-    @Override
-    public void onSleepBegin() {
-        this.playIfRegistered(ANIM_SLEEP);
-    }
-
-    @Override
-    public void onAwakeningBegin() {
-        this.playIfRegistered(ANIM_AWAKENING);
+    public void onSleepPhaseBegin(SleepPhase phase) {
+        String clip = phase.clipName();
+        if (clip != null) {
+            this.playIfRegistered(clip);
+        }
     }
 
     /**
@@ -474,7 +467,7 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
     /**
      * How long the roar pins the mob, taken from the registered {@code roar} clip so the movement
      * lock and the animation cannot drift apart. Falls back to 70 ticks for a mob that roars
-     * without an authored clip. @see #getPreparingSleepDuration()
+     * without an authored clip. @see #sleepPhaseDuration(SleepPhase)
      */
     public int getRoarDuration() {
         int clip = this.clipDurationTicks(ANIM_ROAR);
@@ -582,12 +575,21 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
 
     // ───────────────────────────────────────────────────── NBT ─────
 
+    /**
+     * The sleep phase is deliberately <b>not</b> written here, and restoring it would be a bug rather
+     * than a feature. {@link SleepGoal#canUse()} refuses to start while {@code isInSleepCycle()} is
+     * already true — so a mob loaded mid-cycle came back with the state set and the one thing that
+     * drives it standing down. Nothing then advanced the phase, nothing cleared it, and since
+     * {@code isInSleepCycle()} feeds {@link #isMovementLocked()}, the mob was frozen asleep for good;
+     * not even damage helped, because {@code requestWake()} only raises a flag the goal has to consume.
+     *
+     * <p>Dropping the state instead means a mob wakes on load and, if it is still night and still calm,
+     * {@code SleepUrge} puts it back down within seconds. Losing a few seconds of nap beats a whole
+     * class of stuck states.
+     */
     @Override
     protected void addAdditionalSaveData(@NotNull ValueOutput output) {
         super.addAdditionalSaveData(output);
-        output.putBoolean("Sleeping", this.isSleeping());
-        output.putBoolean("PreparingSleep", this.isPreparingSleep());
-        output.putBoolean("Awakening", this.isAwakening());
         output.putBoolean("Wandering", this.isWandering());
         output.putBoolean("IsMammal", this.isMammal);
         output.putBoolean("HasEgg", this.hasEgg());
@@ -596,9 +598,6 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
     @Override
     protected void readAdditionalSaveData(@NotNull ValueInput input) {
         super.readAdditionalSaveData(input);
-        this.setSleeping(input.getBooleanOr("Sleeping", false));
-        this.setPreparingSleep(input.getBooleanOr("PreparingSleep", false));
-        this.setAwakening(input.getBooleanOr("Awakening", false));
         this.setWandering(input.getBooleanOr("Wandering", false));
         this.isMammal = input.getBooleanOr("IsMammal", false);
         this.setHasEgg(input.getBooleanOr("HasEgg", false));

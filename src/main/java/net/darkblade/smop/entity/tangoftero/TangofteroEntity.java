@@ -324,12 +324,15 @@ public class TangofteroEntity extends SMOPAnimal
 
         // The two transitions are PLAY_ONCE, and MobAnimator's auto-start loop only ever starts
         // REPEATING clips — so these conditions do NOT start them. SleepGoal does, through the
-        // onPreparingSleepBegin/onAwakeningBegin hooks. What the conditions buy is the reverse:
-        // BaseAnimation#tick stops a playing clip whose condition has gone false, so a mob shaken
-        // awake mid-settle cuts the clip instead of finishing it. The phase lengths are no longer
-        // written out a second time as constants — SleepGoal reads them straight off these clips
-        // (see SMOPAnimal#createSleepGoal), so a re-export that changes a clip's length can no
-        // longer leave the mob holding a last frame for the difference.
+        // onSleepPhaseBegin hook. What the conditions buy is the reverse: BaseAnimation#tick stops a
+        // playing clip whose condition has gone false, so a mob shaken awake mid-settle cuts the clip
+        // instead of finishing it. The phase lengths are no longer written out a second time as
+        // constants — SleepGoal reads them straight off these clips (see
+        // SMOPAnimal#sleepPhaseDuration), so a re-export that changes a clip's length can no longer
+        // leave the mob holding a last frame for the difference.
+        //
+        // Three phases here, six on the Krifto, same goal driving both: the cycle is assembled from
+        // whichever clips a mob registers, and this one has no sitting clips. See SleepPhase.
         preparingSleep.setPlayCondition(a -> this.isPreparingSleep());
         awakening.setPlayCondition(a -> this.isAwakening());
 
@@ -636,8 +639,9 @@ public class TangofteroEntity extends SMOPAnimal
 
     // ───────────────────────────────────────────────────── SLEEP ─────
 
-    // No getPreparingSleepDuration/getAwakeningDuration override: SMOPAnimal derives both from the
-    // registered preparing_sleep/awakening clips, and getRoarDuration() from the roar clip.
+    // No sleepPhaseDuration override: SMOPAnimal derives every phase length from the clip registered
+    // under that phase's name, and getRoarDuration() from the roar clip. This mob registers no
+    // sitting clips, so it simply never has those phases.
 
     /** Sleeps right through players — only the undead are worth waking up for. */
     @Override

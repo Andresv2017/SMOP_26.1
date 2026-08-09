@@ -17,12 +17,42 @@ su propio plan de implementación**. El orden es 0 → 1 → 2 → 3.
 |---|---|
 | `eating` | Fase 1 — tameo por alimentación |
 | `tamed` | Fase 1 — celebración al completar el tameo |
-| `steal` | Fase 2 — robo de items a jugadores |
 | `squawk` | Fase 3 — llamado ambiental en reposo |
-| `boost` | Queda sin usar, deliberadamente |
+| `steal` | **Borrado del archivo** — ver Fase 2 y la nota de abajo |
+| `boost` | **Borrado del archivo** |
 
 El foco del trabajo es **tameo (Fase 1) y robo (Fase 2)**. La Fase 3 es chica y va al
 final.
+
+**Nota sobre `swoop`.** No es uno de los clips huérfanos —ya estaba registrado— pero su
+uso cambió: dejó de ser parte del aterrizaje y pasó a ser exclusivamente el picado del
+robo. El ciclo de vuelo normal es `start_flight` → `fly_idle`/`flight` → `landing`, sin
+`swoop` en el medio.
+
+## Estado del archivo de animaciones (tras el re-export del modelo)
+
+El modelo del adulto se re-exportó con los nombres de hueso **sin el prefijo `g`**
+(`gPiglug` → `piglug`) y con el typo `gHGead` corregido a `head`. Un clip que nombre un
+hueso que la malla no define **tira excepción al bakear**, en el primer frame en que el
+mob se renderiza — no hay match parcial ni fallback. Modelo y animaciones tienen que
+coincidir exactamente.
+
+El export de animaciones que acompañó al modelo no trae **`aidle_perched`** ni
+**`bite_flight`**; ambos se conservaron del export anterior, convertidos a mano a la
+convención nueva. También nombraba tres clips con guiones (`l-idle`, `a-idle`,
+`sprint-bite`), que no son identificadores Java válidos: quedaron como `lidle`, `aidle`
+y `sprint_bite`.
+
+**Cambios de dirección de arte aplicados al archivo:**
+
+- El ataque terrestre del adulto pasó de `attack` a **`sprint_bite`** (misma forma:
+  0.4 s, one-shot, 25 canales — así que `ATTACK_SECONDS` y la ventana de golpe no se
+  tocaron). Sigue **registrado** bajo el nombre `"attack"`, que es por el que
+  `AnimatableMeleeAttackGoal` lo busca. El clip `attack` viejo se borró.
+- Se borraron del archivo: `attack`, `boost`, `steal`, `pose1`, `pose2`, `pose3`.
+
+Quedan **24 clips**. Sin conectar todavía: `sit`, `sitting`, `standing_up` (nuevos, sin
+mecánica asignada) y `squawk` (Fase 3).
 
 ---
 
@@ -428,6 +458,153 @@ usando `OrbitFlightController` para el movimiento):
    de a un punto en círculo) hasta 25 bloques de distancia o 400 ticks de
    timeout. Ahí `spawnAtLocation` el `ItemEntity`, limpia `stolenItem` y arma el
    cooldown (5 minutos).
+
+## Correcciones del primer playtest
+
+Tres problemas visuales aparecieron al probarlo en juego, con tres causas
+independientes:
+
+**1. Vuelo robótico al acercarse.** `Mob#serverAiStep` (línea ~718) solo corre el
+goal selector completo en ticks alternos; en los otros llama
+`tickRunningGoals(false)`, que **saltea todo goal que no declare**
+`requiresUpdateEveryTick()`. Sin ese override el bucle PD escribía velocidad a 10 Hz
+mientras la física integraba a 20 — un tick de corrección, un tick de deriva libre,
+repetido. `FollowOwnerFlyingGoal` ya lo tenía; a este goal le faltaba. Además
+`start()` no llamaba `getNavigation().stop()`, así que un path viejo de
+`FlightWanderGoal` podía seguir peleando contra la escritura directa de velocidad.
+
+Aparte, la órbita arrancaba siempre en ángulo 0 sin importar dónde estuviera el
+bicho, así que el punto orbital podía nacer del lado opuesto del jugador y el mob
+cruzaba el círculo en diagonal persiguiéndolo. Ahora `start()` siembra `orbitAngle`
+con el rumbo real del mob respecto de la víctima (`atan2(offset.z, offset.x)`), y el
+punto avanza desde ahí — el mob lo sigue tangencialmente en vez de perseguir un
+punto en un anillo donde todavía no está.
+
+**2. Robaban de espaldas.** `OrbitFlightController.step` orienta el cuerpo hacia la
+**velocidad**. Eso está bien viajando, y mal cerrando sobre algo: en los últimos
+bloques del picado el error de posición colapsa, domina la amortiguación, y la
+velocidad se vuelve chica y errática — o se invierte directamente si se pasa de
+largo, girando al mob para que mire en dirección contraria justo en el momento del
+contacto. Se agregó `stepFacing(mob, target, lookAt)`, que vuela hacia un punto pero
+mantiene el cuerpo apuntado a otro; DIVE y SNATCH lo usan apuntando a la víctima.
+(`faceHeading` escribe `yBodyRot`, no solo la cabeza, así que esto sí cambia lo que
+se ve.)
+
+SNATCH además ahora sostiene posición sobre la víctima durante el clip en vez de
+dejar que la inercia del picado lo lleve de largo mientras la animación corre.
+
+**3. Huían al ras del suelo.** El vector de fuga era el 3D crudo
+`mob.position() - victim.position()`, normalizado. Pero recién terminado el picado el
+mob está a la altura del jugador, así que ese vector es casi horizontal y
+"alejarse 25 bloques" salía rasante. Ahora la dirección se toma **solo del plano
+horizontal** y la altura se fija aparte: `victim.getY() + FLEE_CLIMB_HEIGHT` (10,
+cómodamente sobre `getMinFlightAltitude()` = 6).
+
+**Bug adicional encontrado de paso** (no reportado, pero fatal): `stop()` no soltaba
+el item. Si un aterrizaje —que tiene prioridad sobre este goal— o una pelea cortaban
+el asalto a mitad, el mob se quedaba con el item para siempre, y como `canUse()`
+exige `stolenItem` vacío, **no podía volver a robar nunca**. Ahora `stop()` suelta lo
+que tenga; la ruta de éxito ya lo había limpiado, así que no hay doble drop.
+
+**Ganancias del controlador.** Se habían puesto en `(0.05, 0.4, ...)`, más duras que
+el par probado de `FollowOwnerFlyingGoal`. Volvieron a `(0.04, 0.4)` — la nota de esa
+clase explica que no son perillas independientes y que subir la ganancia hace oscilar
+el lazo. Solo se mantiene el tope de velocidad más alto (0.6 vs 0.5), que hace el
+asalto más veloz sin tocar la estabilidad.
+
+## Correcciones del segundo playtest
+
+**4. La pose de caminar durante el robo.** `steal` estaba registrado con `adultClip`,
+o sea en la **capa 0**, donde un clip *reemplaza* al de locomoción. Pero `steal` solo
+anima `gNeck`, `gHGead` y `gLower_jaw` — es un overlay, no una pose de cuerpo entero.
+En la capa 0, todos los huesos que no toca (alas, patas, cuerpo) caían a la pose bind,
+que es el bicho parado con las alas plegadas: exactamente la "pose de caminar" que se
+veía en pleno picado.
+
+Se movió a la capa 1 (junto a `bite_flight`, que es el mismo tipo de clip y ya estaba
+ahí por la misma razón) — pero ver el punto 7: terminó descartándose por completo.
+
+**5. El picado no usaba el clip de picado.** Existía `swoop` (1.6 s), autorado y sin
+usar para esto. Se agregó `KriftognathusEntity#playSwoopClip()`, una apertura mínima
+sobre `playIfRegistered` (que es `protected`), y el goal lo dispara **una vez** en la
+transición ORBIT → DIVE.
+
+**6. Huían marcha atrás.** La corrección anterior (dirección solo horizontal) arregló
+la altura pero dejó el sentido mal: justo después del robo el mob está *encima* de la
+víctima, así que "alejarse de la víctima" es la dirección de la que venía, y la fuga
+se leía como un retroceso. Ahora la línea del picado se captura en la transición
+ORBIT → DIVE (`stoopHeading`, antes de que el mob esté encima y la dirección pierda
+sentido) y FLEE la sigue de largo, ganando altura. Un solo pase continuo: entra,
+agarra, sale por delante — no entra, agarra y vuelve sobre sus pasos.
+
+## Navegación: lo que se aprendió del Owl (cuarto playtest)
+
+Reporte: la persecución en vuelo se veía torpe y lenta, y la caminata hacia la ofrenda
+también.
+
+**Causa raíz de la persecución: pathfinding en el aire.** `AnimatableMeleeAttackGoal`
+extiende el `MeleeAttackGoal` de vanilla, que persigue con
+`getNavigation().moveTo(target, speed)`. En tierra eso es correcto. En el aire significa
+que `SmartFlyingNavigation` calcula una polilínea de nodos 3D y el mob *recorre esa
+polilínea*: dobla en cada waypoint en vez de cortar la recta, re-planifica cada 4-20
+ticks mientras el objetivo se mueve, y salta entre nodos.
+
+El Owl de DeluxeLib resuelve exactamente esto **no pathfindeando nunca**: su
+`DefendOwnerGoal` es una máquina de fases (REPOSITION → ALIGN → DIVE → PULLUP) con
+control directo de velocidad vía `steerTowards`, `requiresUpdateEveryTick()` y
+`getNavigation().stop()` al arrancar. El javadoc de esa primitiva lo dice sin rodeos:
+produce arcos suaves *"with none of the stair-step bouncing that flying path navigation
+causes"*.
+
+**Arreglo.** `SMOPFlyingAnimal` ya tenía `steerTowards` (misma primitiva, ya portada) —
+lo que faltaba era usarla en combate. Se agregó `KriftoAttackGoal`, subclase de
+`AnimatableMeleeAttackGoal`, que:
+
+- llama `super.tick()` **completo** — es obligatorio, no opcional: ahí viven el look-at,
+  el intervalo de ataque, el cooldown y `checkAndPerformAttack`, y esos contadores son
+  privados de la superclase, así que saltearlo dejaría al Krifto atacando una sola vez;
+- y **después**, solo si está volando, descarta el camino recién construido
+  (`getNavigation().stop()`) y vuela derecho al objetivo con `steerTowards`, apuntando al
+  60 % de la altura del blanco en vez de a los pies.
+
+Descartar el camino es también lo que mantiene a `SmoothFlyingMoveControl` fuera del
+medio: sin camino, `PathNavigation#tick` nunca llama `setWantedPosition`, y ese control
+se pone en `WAIT` tras un solo tick en vez de pelear contra la velocidad escrita a mano.
+
+En tierra no cambia nada: el pathfinding terrestre es el correcto y se ve bien.
+
+**Causa de la caminata lenta: arranque-frenado, no velocidad.** El modificador de
+`TameFeedGoal` siempre fue `1.0D`, el mismo de `SMOPRandomStrollGoal`. El problema era
+que el re-path estaba condicionado a `navigation.isDone() && tickCount % 10 == 0`: un
+camino que termina un bloque antes del item se completa constantemente, y el mob
+esperaba el resto del intervalo —hasta nueve ticks parado— antes de pedir el siguiente.
+Repetido todo el trayecto, eso lee como un animal mucho más lento. Ahora el re-path va
+por cuenta regresiva simple, sin condicionar a `isDone()`, así que siempre hay un camino
+vivo y el bicho simplemente camina.
+
+## Decisiones de dirección de arte (tercer playtest)
+
+**7. `steal` no se usa para nada, y `swoop` sale del aterrizaje.** Decisión del autor
+de las animaciones, no un bug:
+
+- **El ciclo de vuelo normal es `start_flight` → `fly_idle`/`flight` → `landing`.**
+  `onSeekGroundBegin()` ya no reproduce nada; el hover simplemente sigue corriendo
+  hasta que entra la animación de aterrizaje. El override quedó vacío pero explícito,
+  documentando que el vacío es intencional.
+- **`swoop` queda como el picado del robo, y nada más.** Es un clip de picada
+  comprometida, no una entrada de aterrizaje.
+- **`steal` no se usa.** Se sacó el clip, la constante `ANIM_STEAL`, su
+  `setPlayCondition` y su registro.
+
+**Consecuencia estructural: la fase SNATCH desapareció.** Solo existía para sostener
+al mob en el aire mientras corría el clip de 0.65 s. Sin clip no hay nada que esperar,
+así que el agarre pasó a ser instantáneo en el punto más cercano del picado y la
+máquina quedó en **tres** fases: ORBIT → DIVE → FLEE.
+
+Esto además mejora lo que el punto 6 buscaba: el asalto ahora es un solo movimiento
+ininterrumpido de principio a fin, sin la pausa a mitad de camino que rompía
+justamente la línea que FLEE existe para continuar. El `swoop` disparado al inicio del
+picado corre por encima de todo el pase.
 
 ## Refactor: extraer el controlador orbital
 
