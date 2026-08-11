@@ -1,6 +1,9 @@
 package net.darkblade.smop.client;
 
 import net.darkblade.smop.SMOP;
+import net.darkblade.smop.client.hellhippo.HellHippoBabyModel;
+import net.darkblade.smop.client.hellhippo.HellHippoModel;
+import net.darkblade.smop.client.hellhippo.HellHippoRenderer;
 import net.darkblade.smop.client.krifto.KriftoBabyModel;
 import net.darkblade.smop.client.krifto.KriftognathusModel;
 import net.darkblade.smop.client.krifto.KriftognathusRenderer;
@@ -26,6 +29,8 @@ public final class SMOPClientEvents {
         event.registerLayerDefinition(SalmonModel.LAYER_LOCATION, SalmonModel::createBodyLayer);
         event.registerLayerDefinition(KriftognathusModel.LAYER_LOCATION, KriftognathusModel::createBodyLayer);
         event.registerLayerDefinition(KriftoBabyModel.LAYER_LOCATION, KriftoBabyModel::createBodyLayer);
+        event.registerLayerDefinition(HellHippoModel.LAYER_LOCATION, HellHippoModel::createBodyLayer);
+        event.registerLayerDefinition(HellHippoBabyModel.LAYER_LOCATION, HellHippoBabyModel::createBodyLayer);
     }
 
     @SubscribeEvent
@@ -33,6 +38,7 @@ public final class SMOPClientEvents {
         event.registerEntityRenderer(SMOPEntities.TANGOFTERO.get(), TangofteroRenderer::new);
         event.registerEntityRenderer(SMOPEntities.SALMON.get(), SalmonRenderer::new);
         event.registerEntityRenderer(SMOPEntities.KRIFTOGNATHUS.get(), KriftognathusRenderer::new);
+        event.registerEntityRenderer(SMOPEntities.HELL_HIPPO.get(), HellHippoRenderer::new);
     }
 
     private SMOPClientEvents() {}

@@ -1,6 +1,7 @@
 package net.darkblade.smop.entity;
 
 import net.darkblade.smop.SMOP;
+import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
 import net.darkblade.smop.entity.salmon.SalmonEntity;
 import net.darkblade.smop.entity.tangoftero.TangofteroEntity;
@@ -38,6 +39,13 @@ public final class SMOPEntities {
                             .sized(1.0F, 1.0F)
                             .clientTrackingRange(10)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("kriftognathus"))));
+
+    public static final DeferredHolder<EntityType<?>, EntityType<HellHippoEntity>> HELL_HIPPO =
+            ENTITY_TYPES.register("hell_hippo",
+                    () -> EntityType.Builder.<HellHippoEntity>of(HellHippoEntity::new, MobCategory.CREATURE)
+                            .sized(2.5F, 2.5F)
+                            .clientTrackingRange(10)
+                            .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("hell_hippo"))));
 
     public static void register(IEventBus modEventBus) {
         ENTITY_TYPES.register(modEventBus);

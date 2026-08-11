@@ -2,6 +2,7 @@ package net.darkblade.smop.event;
 
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.SMOPEntities;
+import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
 import net.darkblade.smop.entity.salmon.SalmonEntity;
 import net.darkblade.smop.entity.tangoftero.TangofteroEntity;
@@ -21,6 +22,7 @@ public final class SMOPEntityAttributes {
         event.put(SMOPEntities.TANGOFTERO.get(), TangofteroEntity.createAttributes().build());
         event.put(SMOPEntities.SALMON.get(), SalmonEntity.createAttributes().build());
         event.put(SMOPEntities.KRIFTOGNATHUS.get(), KriftognathusEntity.createAttributes().build());
+        event.put(SMOPEntities.HELL_HIPPO.get(), HellHippoEntity.createAttributes().build());
     }
 
     /**
