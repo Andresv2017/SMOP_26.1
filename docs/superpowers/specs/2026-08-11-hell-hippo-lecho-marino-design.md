@@ -21,7 +21,7 @@ arregle la primera, así que las tres entran en este spec.
 ### Causa A — la navegación anfibia está diseñada para lo contrario
 
 `AmphibiousNodeEvaluator.prepare()` pone `WATER` malus **0.0** y `WALKABLE` malus **6.0**
-(`AmphibiousNodeEvaluator.java:22-26`). El pathfinder **prefiere activamente nadar por la columna de
+(`AmphibiousNodeEvaluator#prepare`). El pathfinder **prefiere activamente nadar por la columna de
 agua antes que pisar el fondo**: una ruta submarina sale flotando varios bloques por encima del
 lecho.
 
@@ -37,7 +37,7 @@ no avanza jamás → salta `timeoutPath()` → recalcula → vuelve a empezar. *
 
 ### Causa B — la velocidad submarina está ~7× pasada
 
-`Mob.setSpeed(f)` también hace `setZza(f)` (`Mob.java:557-560`), así que el vector que llega a
+`Mob.setSpeed(f)` también hace `setZza(f)` (`Mob#setSpeed`), así que el vector que llega a
 `travel()` es `(0, 0, ~0.25)` y su `lengthSqr` es 0.0625 < 1 — `getInputVector` **no lo normaliza**.
 La aceleración real es por tanto `speed²` ≈ 0.0625 por tick, y la velocidad terminal la fija el drag:
 
@@ -51,7 +51,7 @@ nunca llega a acelerar.
 
 El mismo `travel()` casero tampoco amortigua la Y (vanilla usa 0.8), así que `SINK_ACCELERATION` se
 acumula sin techo, y nunca llama a `calculateEntityAnimation()`, que vanilla ejecuta al final de
-**todas** las ramas de `travel()` (`LivingEntity.java:2346`).
+**todas** las ramas de `LivingEntity#travel`.
 
 ### Causa C — el goal de nado busca destinos en la columna, no en el fondo
 
@@ -63,15 +63,15 @@ navegación de fondo no puede alcanzar.
 
 ## Sección 1 · Física: quitar el `travel()` casero, no arreglarlo
 
-26.1 tiene un atributo hecho justo para esto. En la rama de agua de `LivingEntity.travel()`
-(`LivingEntity.java:2233-2241`):
+26.1 tiene un atributo hecho justo para esto. La rama de agua vive en su propio método,
+`LivingEntity#travelInWater`:
 
 ```java
-float f6 = (float)this.getAttributeValue(Attributes.WATER_MOVEMENT_EFFICIENCY);
-if (!this.onGround()) { f6 *= 0.5F; }
-if (f6 > 0.0F) {
-    f4 += (0.54600006F - f4) * f6;   // drag:  0.8  → 0.546
-    f5 += (this.getSpeed()  - f5) * f6;   // accel: 0.02 → getSpeed()
+float waterWalker = (float)this.getAttributeValue(Attributes.WATER_MOVEMENT_EFFICIENCY);
+if (!this.onGround()) { waterWalker *= 0.5F; }
+if (waterWalker > 0.0F) {
+    slowDown += (0.54600006F - slowDown) * waterWalker;   // drag:  0.8  → 0.546
+    speed    += (this.getSpeed() - speed) * waterWalker;  // accel: 0.02 → getSpeed()
 }
 ```
 
@@ -82,15 +82,15 @@ reimplementar nada.
 **Cambios:**
 
 1. `createAttributes()` añade `.add(Attributes.WATER_MOVEMENT_EFFICIENCY, 1.0D)`. El atributo ya está
-   declarado en `createLivingAttributes()` (`LivingEntity.java:338`) con default 0.0, y el `Builder`
-   es un `HashMap` (`AttributeSupplier.java:69`), así que re-añadirlo sobrescribe limpio. Es un
+   declarado en `createLivingAttributes()` con default 0.0, y el `Builder`
+   es un `HashMap` (`AttributeSupplier.Builder`), así que re-añadirlo sobrescribe limpio. Es un
    `RangedAttribute` con máximo 1.0, o sea que 1.0 es el techo legal.
 2. `travel()` se reduce a `super.travel(v)` **más un sesgo de hundimiento**. El que deja vanilla
    (`getFluidFallingAdjustedMovement` → gravedad/16 = 0.005, con damping en Y de 0.8) da una terminal
    de ~0.025 b/t: dos segundos por bloque, se ve flotante al bajar un escalón.
 3. Se eliminan `WATER_DRAG` y el `moveRelative`/`move` manuales. Con ello se recupera gratis lo que
    el override se estaba saltando: `calculateEntityAnimation()`, el manejo de `onClimbable`, y el
-   empujón anti-atasco de `horizontalCollision` (`LivingEntity.java:2258-2260`).
+   empujón anti-atasco de `horizontalCollision` (en `travelInWater`).
 
 ### La vertical, concretamente
 
@@ -132,7 +132,7 @@ subir por ella.
 Vanilla tiene exactamente dos mecanismos de ascenso, y el hipo **no tenía ninguno de los dos**:
 
 1. **La ruta del salto.** Un mob terrestre trepa porque su `MoveControl` llama a
-   `getJumpControl().jump()` (`MoveControl.java:104-111`), lo que levanta `jumping`, lo que `aiStep`
+   `getJumpControl().jump()` (`MoveControl#tick`), lo que levanta `jumping`, lo que `aiStep`
    convierte en el empujón de `jumpInFluid`. Pero `DirectionalMoveControl` es horizontal puro y nunca
    pide salto — cero menciones de `jump` en el archivo, y cero `getJumpControl`/`setJumping` en todo
    SMOP y todo DeluxeLib.
@@ -156,7 +156,7 @@ ningún salto.
 ### `getFluidJumpThreshold()` se queda — pero su javadoc está al revés
 
 El javadoc actual dice que el override existe para *"never auto-jump out of the water"*. Es lo
-contrario de lo que hace el código. Trazando `LivingEntity.java:2773-2799` con
+contrario de lo que hace el código. Trazando el bloque `jump` de `LivingEntity#aiStep` con
 `d4 = Double.MAX_VALUE`:
 
 | estado | rama | resultado |
@@ -185,7 +185,7 @@ envuelve dos navegaciones:
 ### Por qué `setCanFloat(false)` es la pieza clave
 
 `WalkNodeEvaluator.getStart()` abre con `if (this.canFloat() && this.mob.isInWater())` y en ese caso
-**sube el nodo inicial hasta la superficie** (`WalkNodeEvaluator.java:58-67`). `getSurfaceY()` de
+**sube el nodo inicial hasta la superficie** (`WalkNodeEvaluator#getStart`). `getSurfaceY()` de
 `GroundPathNavigation` hace lo mismo. Con el flag en false, ambos anclan a los pies
 (`Mth.floor(getY() + 0.5)`) y la ruta se pega al lecho — que es exactamente lo que hace que los
 waypoints satisfagan el gate de Y de la causa A.
@@ -204,13 +204,13 @@ this.setPathfindingMalus(PathType.WATER, 0.0F);
 this.setPathfindingMalus(PathType.WATER_BORDER, 0.0F);
 ```
 
-`Drowned.java:64` hace exactamente lo primero, por la misma razón: que el evaluador terrestre esté
+El constructor de `Drowned` hace exactamente lo primero, por la misma razón: que el evaluador terrestre esté
 dispuesto a enrutar por agua sin penalización.
 
 ### La regla de fallback
 
 Vive en un solo sitio, `moveTo`: se calcula la ruta a pie; si existe y `canReach()`
-(`Path.java:131`), se camina; si no, se delega en la acuática y se marca `swimming`. Al salir del
+, se camina; si no, se delega en la acuática y se marca `swimming`. Al salir del
 agua o al completarse la ruta acuática, vuelve a terrestre.
 
 **Métodos que deben delegar según el flag, y no son opcionales:**
@@ -253,11 +253,11 @@ Funciona por construcción, no por casualidad. `DefaultRandomPos.getPos()` filtr
 
 - `hasMalus` exige malus **== 0** — con `WATER` a 0.0 (sección 2), las posiciones submarinas pasan.
 - `isNotStable` → `PathNavigation.isStableDestination(pos)` = *el bloque de abajo es sólido*
-  (`PathNavigation.java:407-410`) — **descarta las posiciones de media agua y deja solo el lecho**.
+  (`PathNavigation#isStableDestination`) — **descarta las posiciones de media agua y deja solo el lecho**.
 
 Es decir: el goal de deambular correcto bajo el agua es el terrestre, no el de nado. La navegación
 acuática interna sigue teniendo su `isStableDestination` más laxo
-(`AmphibiousPathNavigation.java:43-45`), pero ese solo se consulta en el fallback.
+(`AmphibiousPathNavigation#isStableDestination`), pero ese solo se consulta en el fallback.
 
 `LeaveWaterShakeGoal` no se toca: su `!isInWater() && onGround()` sigue siendo correcto.
 
@@ -275,7 +275,7 @@ La raya correcta es **la profundidad del agua sobre los pies**. `getFluidHeight(
 devuelve exactamente eso, en bloques:
 
 ```java
-interim.fluidHeight = Math.max(d1 - aabb.minY, interim.fluidHeight);   // Entity.java:3357
+tracker.height = Math.max(fluidTop - entityY, tracker.height);   // EntityFluidInteraction
 ```
 
 y se calcula en `updateInWaterStateAndDoFluidPushing()` desde `baseTick`, **en las dos caras** — o

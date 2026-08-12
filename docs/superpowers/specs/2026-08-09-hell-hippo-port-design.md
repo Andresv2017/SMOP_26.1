@@ -5,6 +5,21 @@ Alcance: portar el `Hell_HippoEntity` de `Spectacular-Mobs-of-Peligoro` (Forge 1
 reformulado sobre `SMOPAnimal` y DeluxeLib.
 Depende de: `AnimSound` e `IdleAnimationGoal`, ya implementados.
 
+## Estado — actualizado 2026-08-12
+
+| Fase | Estado |
+|---|---|
+| **1 — El mob vivo** | **Completa.** Con tres desviaciones respecto de lo escrito aquí, marcadas abajo con *(desviación)*. |
+| **2 — Domesticación** | Sin empezar. |
+| **3 — Montura y sistemas sociales** | Sin empezar. |
+
+La Fase 1d (*Agua*) se rehízo entera después de escribirse este documento; el diseño que rige ahora
+es `2026-08-11-hell-hippo-lecho-marino-design.md` y lo que dice esta sección se conserva solo como
+registro de lo que se pidió en su día.
+
+Dos ramas muertas esperan a la Fase 2b: `picksItsOwnFights()` y `tickSeaweed()` leen `isSaddled()`,
+que hoy nunca puede ser cierto porque `canUseSlot` no está implementado en ninguna parte del mod.
+
 ## Dónde encaja
 
 El mod legacy tiene seis mobs. Tres ya están portados y terminados — Tangoftero, Salmon,
@@ -72,13 +87,22 @@ public class HellHippoEntity extends GenderedSMOPAnimal
                    IGroupBehaviour, IHasLeader, ISleepThreatEvaluator, ISleepAwareness
 ```
 
-Tamaño 2.5×2.5, `MobCategory.CREATURE`, `maxUpStep` elevado como el legacy.
+Tamaño 2.5×2.5, `MobCategory.CREATURE`, `maxUpStep` elevado como el legacy (`STEP_HEIGHT = 1.0`).
+
+*(desviación)* La firma real hoy es solo
+`implements ISleepThreatEvaluator, ISleepAwareness`. `IGroupBehaviour` e `IHasLeader` se cayeron con
+la manada — ver 1b — y las tres de montura llegan con las fases 2 y 3.
 
 ## Qué se reusa de SMOP 26.1
 
 `IGroupBehaviour`, `IHasLeader`, `GroupUtil`, `FollowGroupLeaderGoal`, `GenericBreedGoal`,
 `SMOPRandomStrollGoal`, el ciclo de sueño (`SleepPhase`/`SleepGoal`/`SleepUrge`), `Gendered`,
 `FearEffect`, `RiderControllable` + keybinds + packet, y las dos carnes.
+
+*(desviación)* De esa lista **no** se acabaron usando las cuatro de manada (ver 1b) ni
+`GenericBreedGoal` — esa existe para las ponedoras y cierra el apareamiento con
+`finalizeSpawnChildFromBreeding(..., null)`, o sea corazones y experiencia pero ninguna cría, que es
+justo como se veía. Un hipopótamo pare vivo, así que usa el `BreedGoal` de vanilla.
 
 ## Fases
 
@@ -108,12 +132,47 @@ formato de `KriftoAnimations`. Clips de locomoción conectados: idle, caminar, c
 
 *Verificación:* aparece, camina, nada, tiene cría con su propio modelo.
 
+**Spawn natural** *(desviación)*, resuelto el 2026-08-12 y con números distintos de los del legacy:
+
+| | biomas | peso | manada |
+|---|---|---|---|
+| 1.20.1 | `savanna` | 15 | 1-3 |
+| 26.1 | las tres sabanas + `swamp` + `mangrove_swamp` | **4** | **1-1** |
+
+El peso no se hereda porque el legacy no competía contra la misma tabla. La sabana ya reparte 52
+puntos de `CREATURE` (oveja 12, cerdo 10, gallina 10, armadillo 10, vaca 8, caballo 1, burro 1) y el
+pantano 50 (las mismas granjeras más rana 10). A peso 15 el hipo se lleva el 22% de las tiradas — más
+que la oveja, o sea el animal más común del bioma, que es exactamente como se veía en juego. A 4 se
+queda cerca del caballo: el animal grande y propio del bioma con el que te cruzas de vez en cuando.
+
+Son **dos** registros, y el segundo es fácil de olvidar: la entrada de bioma en `SMOPSpawns` y la
+regla de colocación en `SMOPEntityAttributes`. Sin la segunda,
+`SpawnPlacements#getPlacementType` cae a `NO_RESTRICTIONS` y `checkSpawnRules` devuelve `true` sin
+mirar nada, con lo que la entrada de bioma sola colocaría hipos donde cayera. Y la entrada solo vive
+en memoria hasta que `runDataServer` la escribe como datapack.
+
+Se registra `ON_GROUND` pese a ser anfibio: eso decide dónde se le coloca al nacer, no dónde puede ir.
+
 #### 1b · Vida propia
 
 Sueño de seis fases, género, cría, grupo/líder (`GroupType.PACK`), y gestos de reposo vía
 `IdleAnimationGoal` con los clips estéticos que traiga el rig.
 
 *Verificación:* duerme de noche y despierta, se agrupa siguiendo a un líder, gesticula estando quieto.
+
+**Dos desviaciones**, ambas deliberadas:
+
+- *(desviación)* **El sueño tiene tres fases, no seis.** El ciclo se arma con los clips que el mob
+  registre, y este rig no trae set de sentarse — así que sus fases son `preparing_sleep`, `sleep` y
+  `awakening`, y las de sentarse simplemente no existen. Mismo caso que el Tangoftero.
+- *(desviación)* **La manada se descartó entera.** Llegó a portarse y se quitó: el líder era el
+  miembro que devolviese primero una consulta espacial, y el desempate de quién elegía era el id de
+  entidad más bajo *dentro del vecindario de cada miembro* — así que miembros en extremos opuestos de
+  un grupo laxo veían vecindarios distintos, elegían líderes distintos, y partían la manada que
+  existían para mantener unida. En su lugar el hipo aparece solo, y una hembra trae cría el 50% de
+  las veces (`CALF_COMPANION_CHANCE`), lo que da la misma lectura en pantalla sin estado que pueda
+  contradecirse consigo mismo. `IGroupBehaviour`, `IHasLeader`, `GroupUtil` y `FollowGroupLeaderGoal`
+  quedan sin usar por este mob.
 
 #### 1c · Combate
 
@@ -131,6 +190,16 @@ mismo tratamiento que recibieron el Krifto y el Tangoftero.
 ticks le crecen algas encima; esquilarlas con tijeras da 2 kelp y bloquea el recrecimiento 100 ticks.
 
 *Verificación:* deambula bajo el agua, se sacude al salir, le crecen algas y se pueden esquilar.
+
+> ***(desviación) — esta sub-fase está superada.*** Lo que se construyó aquí no bastaba: el animal se
+> plantaba en el fondo y temblaba. Se rehízo entera bajo
+> `2026-08-11-hell-hippo-lecho-marino-design.md`, que es el documento que rige. En resumen: la
+> navegación anfibia se cambió por una `SeabedPathNavigation` propia que camina el lecho y solo nada
+> cuando no hay ruta a pie; la física submarina pasó a `WATER_MOVEMENT_EFFICIENCY` en vez de un
+> `travel()` casero; los dos goals de deambular se unificaron en uno; y la raya entre los clips de
+> tierra y los de agua dejó de ser `isInWater()` para pasar a la profundidad del agua sobre el cuerpo.
+> Las algas y el sacudón siguen como se pidió aquí, con el gesto de reposo ahora prohibido dentro del
+> agua.
 
 ---
 
