@@ -123,6 +123,10 @@ public final class SMOPItems {
             ITEMS.registerItem("salmon_spawn_egg",
                     props -> new SpawnEggItem(props.spawnEgg(SMOPEntities.SALMON.get())));
 
+    public static final DeferredItem<SpawnEggItem> HELL_HIPPO_SPAWN_EGG =
+            ITEMS.registerItem("hell_hippo_spawn_egg",
+                    props -> new SpawnEggItem(props.spawnEgg(SMOPEntities.HELL_HIPPO.get())));
+
     // ───────────────────────────────────────────────────── CREATIVE TAB ─────
 
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> SMOP_TAB =
@@ -156,6 +160,7 @@ public final class SMOPItems {
                         output.accept(TANGOFTERO_SPAWN_EGG.get());
                         output.accept(KRIFTOGNATHUS_SPAWN_EGG.get());
                         output.accept(SALMON_SPAWN_EGG.get());
+                        output.accept(HELL_HIPPO_SPAWN_EGG.get());
                     })
                     .build());
 

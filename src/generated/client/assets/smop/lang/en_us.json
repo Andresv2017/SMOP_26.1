@@ -13,6 +13,7 @@
   "item.smop.cooked_tango_leg": "Cooked Tango Leg",
   "item.smop.hell_hippo_cooked_meat": "Hell Hippo Cooked Meat",
   "item.smop.hell_hippo_raw_meat": "Hell Hippo Raw Meat",
+  "item.smop.hell_hippo_spawn_egg": "Hell Hippo Spawn Egg",
   "item.smop.krifto_meat": "Krifto Meat",
   "item.smop.krifto_stew": "Krifto Stew",
   "item.smop.krifto_wing": "Krifto Wing",
@@ -29,5 +30,6 @@
   "key.smop.descend": "Descend",
   "key.smop.fear": "Intimidate",
   "key.smop.open_inventory": "Open Mount Inventory",
-  "subtitles.gt_roar": "Grand Tyrant roars"
+  "subtitles.gt_roar": "Grand Tyrant roars",
+  "subtitles.krifto_squawk": "Kriftognathus squawks"
 }

@@ -118,6 +118,7 @@ public final class SMOPDatagen {
             add("effect.smop.fear", "Fear");
 
             add("subtitles.gt_roar", "Grand Tyrant roars");
+            add("subtitles.krifto_squawk", "Kriftognathus squawks");
 
             // Keybinds. The category key is derived from its Identifier: key.category.<ns>.<path>.
             add("key.category.smop.main", "Spectacular Mobs of Peligoro");

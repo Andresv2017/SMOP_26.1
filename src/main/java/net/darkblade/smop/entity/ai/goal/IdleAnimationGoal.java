@@ -52,8 +52,11 @@ public class IdleAnimationGoal extends Goal {
 
     private Predicate<SMOPAnimal> condition = animal -> true;
 
+    /** {@link #nextAllowedTick} before the first evaluation has had a chance to set it. */
+    private static final int UNARMED = -1;
+
     /** Earliest {@code tickCount} the next gesture may start. Not persisted — see the class note. */
-    private int nextAllowedTick;
+    private int nextAllowedTick = UNARMED;
     /** The clip this goal started, while it is still running. */
     @Nullable
     private String playing;
@@ -108,37 +111,59 @@ public class IdleAnimationGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        return !this.clips.isEmpty()
-                && this.mob.tickCount >= this.nextAllowedTick
-                // Not folded into atRest(): once this goal starts, the mob IS performing an action —
-                // its own — so continuing must not test this or the gesture would cut itself off on
-                // the very next evaluation. Here it means "do not stack a gesture on top of a bite or
-                // a meal already in progress", which isMovementLocked() cannot cover, since a
-                // cosmetic gesture is precisely one that does not lock movement.
+        if (this.clips.isEmpty()) {
+            return false;
+        }
+        if (this.nextAllowedTick == UNARMED) {
+            // Start the clock instead of firing. A mob that has just entered the world has a
+            // tickCount of 0, so a cooldown left at its own zero default is already satisfied — and
+            // every freshly spawned animal greeted the world with a gesture on its first tick.
+            // Arming here rather than in the constructor keeps this off the entity's construction
+            // path, which runs registerGoals() before the entity is fully built.
+            this.armCooldown();
+            return false;
+        }
+        return this.mob.tickCount >= this.nextAllowedTick
+                // "Nothing else is going on." Both of these belong to starting only, never to
+                // continuing: the moment this goal starts, the mob IS performing an action and MAY
+                // be movement-locked by it — a gesture that pins the animal in place while it plays
+                // is perfectly normal, and {@code actionLocksMovement} defaults to true. Testing
+                // either of them again while running made the gesture cancel itself on the very next
+                // evaluation, which is why nothing was ever seen playing.
                 && !this.mob.isPerformingAction()
-                && this.atRest();
+                && !this.mob.isMovementLocked()
+                && this.stillIdle();
     }
 
     @Override
     public boolean canContinueToUse() {
-        return this.playing != null && this.mob.isPerforming(this.playing) && this.atRest();
+        return this.playing != null && this.mob.isPerforming(this.playing) && this.stillIdle();
     }
 
-    /** Standing around with nothing better to do. */
-    private boolean atRest() {
+    /**
+     * Still got nothing better to do. Deliberately says nothing about action state or the movement
+     * lock — see {@link #canUse()} — so a gesture that pins the mob does not read as a reason to
+     * abandon that same gesture. Sleep is still covered, because falling asleep mid-gesture should
+     * cut it.
+     */
+    private boolean stillIdle() {
         return !this.mob.isMoving()
                 && this.mob.getTarget() == null
                 && !this.mob.isInSleepCycle()
-                && !this.mob.isMovementLocked()
                 && this.condition.test(this.mob);
     }
 
     @Override
     public void start() {
         this.playing = this.pickClip();
+        this.armCooldown();
+        this.mob.startAction(this.playing);
+    }
+
+    /** Pushes the next gesture out by the configured floor plus its random spread. */
+    private void armCooldown() {
         this.nextAllowedTick = this.mob.tickCount + this.cooldownTicks
                 + this.mob.getRandom().nextInt(this.cooldownSpreadTicks);
-        this.mob.startAction(this.playing);
     }
 
     @Override

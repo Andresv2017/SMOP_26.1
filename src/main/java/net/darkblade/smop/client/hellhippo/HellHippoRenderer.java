@@ -50,6 +50,20 @@ public class HellHippoRenderer
         state.male = entity.isMale();
     }
 
+    /**
+     * Off, so the authored death clip owns the collapse.
+     *
+     * <p>Vanilla rolls a dying mob itself — {@code LivingEntityRenderer#setupRotations} multiplies
+     * the pose stack by {@code Axis.ZP.rotationDegrees(fall * getFlipDegrees())}, and that default is
+     * 90°. The Hell Hippo's death clip turns its root bone −82.5° about the same axis, so with both
+     * live the two compose to roughly 7.5° and the corpse reads as still standing. Handing the whole
+     * rotation to the clip is what makes it flop the way it was animated.
+     */
+    @Override
+    protected float getFlipDegrees() {
+        return 0.0F;
+    }
+
     @Override
     public @NotNull Identifier getTextureLocation(@NotNull HellHippoRenderState state) {
         if (state.isBaby) {
