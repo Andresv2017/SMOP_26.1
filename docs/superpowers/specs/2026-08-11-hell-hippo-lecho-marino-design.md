@@ -348,11 +348,13 @@ Se leyó cada uno buscando gates de agua o de suelo. Tres resultados que no eran
 - **`AnimatableMeleeAttackGoal` tiene un `dy <= 1.5`** (línea 92) que solo decide **cuándo parar la
   navegación**, no si se ataca. El ataque se decide con `distanceToSqr` en 3D contra el reach. Así que
   un objetivo por encima se sigue persiguiendo en vez de plantarse ante él, que es lo correcto.
-- **El mordisco es una caja horizontal.** La `HitWindow` es `box(2.6, 1.1)` anclada en
-  `(1.9, 0.0, 0.9)`, así que un objetivo nadando **por encima** del hipo queda fuera de su alcance
-  vertical aunque el goal decida atacar. No es una regresión — siempre fue así, y en tierra no se veía
-  porque los objetivos están en el suelo. Queda anotado como límite conocido, no como bug a arreglar
-  aquí.
+- **El mordisco alcanza hacia arriba, y eso es correcto.** `AttackShape.Box#contains` no tiene
+  término vertical: calcula `forward` y `side` y devuelve, con la Y ignorada por completo — el javadoc
+  de la interfaz lo declara como decisión de diseño ("un swing de mob terrestre alcanza lo que tenga
+  delante, a cualquier altura"). En `box(2.6, 1.1)` el **1.1 es medio-ancho lateral, no altura**. El
+  único tope vertical lo pone la fase ancha: `AABB.inflate(broadRadius + 1)` con
+  `broadRadius = √(2.6² + 1.1²) = 2.82`, o sea ±3.82 desde el ancla — más de lo que el goal permite
+  atacar, que son 3.5 en 3D. Un objetivo nadando por encima del hipo **sí se muerde**.
 
 `TemptGoal` y `BreedGoal` no tienen ningún gate de agua ni de suelo.
 
@@ -406,7 +408,11 @@ silencio, porque la búsqueda no devolvería ningún adulto que pudiera califica
   un objetivo de verificación de este spec.
 - **Que `DirectionalMoveControl` pueda saltar.** Es un bug real y afecta a todos los mobs de
   DeluxeLib, en tierra y en agua. Vive en el otro repo.
-- **Que el mordisco alcance hacia arriba.** Límite conocido de la `HitWindow`, no una regresión.
+- **Limitar el mordisco en vertical.** `AttackShape.box3d(length, halfWidth, halfHeight)` existe y
+  añadiría un tope de altura que hoy no hay, pero está pensado para mobs voladores que apuntan con
+  pitch (se empareja con `aimAlongLook()` y `AttackAnchor.look`). Sobre un hipo, que apunta con el yaw
+  del cuerpo, solo estrecharía el alcance que ya tiene. Es una decisión de look, no un arreglo, y no
+  se toma aquí.
 - **Todo lo montado.** `travel()` sigue delegando en `super` cuando `isVehicle()`; el pilotaje del
   jinete es fase 3.
 
