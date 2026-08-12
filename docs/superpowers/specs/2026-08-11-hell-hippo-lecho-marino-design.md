@@ -400,6 +400,29 @@ Dos desviaciones deliberadas del original, ambas por robustez: el radio de búsq
 silencio, porque la búsqueda no devolvería ningún adulto que pudiera calificar), y `tick()` comprueba
 `parent != null`, que vanilla desreferencia sin mirar.
 
+### El mordisco pasa a `box3d`
+
+Con el alcance vertical ya entendido (ver la auditoría de la sección 5: `box` ignora la Y y solo la
+fase ancha la acota, a ±3.8), queda una decisión de look que en tierra nunca se planteó porque los
+objetivos comparten suelo con el atacante. Bajo el agua no lo comparten, y un jugador nadando tres
+bloques por encima recibía daño de un mordisco que visiblemente no le llegaba.
+
+`AttackShape.box3d(2.6, 1.1, 1.5)` en lugar de `box(2.6, 1.1)`. El medio-alto de 1.5 se mide desde el
+ancla, que está a 0.9, así que cubre de −0.6 a +2.4 sobre los pies del hipo: cualquier cosa apoyada
+en su mismo suelo, más un escalón o dos de pendiente, y nada flotando por encima.
+
+**Dos diferencias con `box` que no son solo el tope vertical:**
+
+- `box3d` mide contra el **centro** del objetivo (`position() + bbHeight/2`); `box` medía contra su
+  posición de pies. La raya cae por tanto a media altura de la víctima.
+- La tolerancia que se suma en vertical es `target.getBbWidth() / 2`, el medio-**ancho** del objetivo,
+  no su medio-alto. Para un jugador son 0.3.
+
+La forma está pensada originalmente para mobs voladores que apuntan con pitch, emparejada con
+`aimAlongLook()` y `AttackAnchor.look`. Aquí el `facing` sigue siendo el yaw del cuerpo, plano, con lo
+que el `up` que calcula `Box3D` sale siendo el world-up y la caja queda a nivel — que es exactamente
+lo que se quiere para un animal que muerde de frente. 1.5 es número de ojo.
+
 ---
 
 ## Fuera de alcance
@@ -408,11 +431,9 @@ silencio, porque la búsqueda no devolvería ningún adulto que pudiera califica
   un objetivo de verificación de este spec.
 - **Que `DirectionalMoveControl` pueda saltar.** Es un bug real y afecta a todos los mobs de
   DeluxeLib, en tierra y en agua. Vive en el otro repo.
-- **Limitar el mordisco en vertical.** `AttackShape.box3d(length, halfWidth, halfHeight)` existe y
-  añadiría un tope de altura que hoy no hay, pero está pensado para mobs voladores que apuntan con
-  pitch (se empareja con `aimAlongLook()` y `AttackAnchor.look`). Sobre un hipo, que apunta con el yaw
-  del cuerpo, solo estrecharía el alcance que ya tiene. Es una decisión de look, no un arreglo, y no
-  se toma aquí.
+- **Que `DirectionalMoveControl` conduzca la Y por sí mismo.** El ascenso se resuelve en
+  `HellHippoEntity#travel` porque ahí está contenido; llevarlo al move control de DeluxeLib tocaría a
+  todos sus mobs.
 - **Todo lo montado.** `travel()` sigue delegando en `super` cuando `isVehicle()`; el pilotaje del
   jinete es fase 3.
 
