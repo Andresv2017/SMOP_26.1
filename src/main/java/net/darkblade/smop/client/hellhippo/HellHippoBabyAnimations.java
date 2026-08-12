@@ -521,7 +521,7 @@ public final class HellHippoBabyAnimations {
                     new Keyframe(1.1667F, KeyframeAnimations.posVec(0.0F, 3.71F, 0.7F), AnimationChannel.Interpolations.CATMULLROM)
             ))
             .addAnimation("Hipopotamo_Infernal", new AnimationChannel(AnimationChannel.Targets.POSITION,
-                    new Keyframe(0.0F, KeyframeAnimations.posVec(0.0F, -17.0F, 0.0F), AnimationChannel.Interpolations.LINEAR)
+                    new Keyframe(0.0F, KeyframeAnimations.posVec(0.0F, 0F, 0.0F), AnimationChannel.Interpolations.LINEAR)
             ))
             .build();
 
@@ -1140,10 +1140,18 @@ public final class HellHippoBabyAnimations {
                     new Keyframe(0.45F, KeyframeAnimations.degreeVec(0.0F, -25.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
                     new Keyframe(0.75F, KeyframeAnimations.degreeVec(0.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM)
             ))
+            // Lateral sweep of the whole front pair, HALVED from the adult's -11/+10. posVec is in
+            // model pixels, which do not scale with the rig, and this clip was copied off an adult
+            // roughly 1.4x the calf's build — so the identical number travels much further relative
+            // to a smaller body. front_legs is the parent of both thighs, so its X adds to whatever
+            // each thigh does on its own, and at t=0.3 the two stacked to -15: on the adult that
+            // leaves the right thigh 10px clear of a 22-wide torso (45%, reads as a lunge), on the
+            // calf 12px clear of a 14-wide torso (86%, reads as a severed leg). This is the dominant
+            // term in that sum, not the thigh's own offset.
             .addAnimation("front_legs", new AnimationChannel(AnimationChannel.Targets.POSITION,
                     new Keyframe(0.0F, KeyframeAnimations.posVec(0.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
-                    new Keyframe(0.3F, KeyframeAnimations.posVec(-11.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
-                    new Keyframe(0.45F, KeyframeAnimations.posVec(10.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
+                    new Keyframe(0.3F, KeyframeAnimations.posVec(-5.5F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
+                    new Keyframe(0.45F, KeyframeAnimations.posVec(5.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
                     new Keyframe(0.75F, KeyframeAnimations.posVec(0.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM)
             ))
             .addAnimation("right_leg1", new AnimationChannel(AnimationChannel.Targets.ROTATION,
@@ -1154,7 +1162,12 @@ public final class HellHippoBabyAnimations {
             ))
             .addAnimation("right_leg1", new AnimationChannel(AnimationChannel.Targets.POSITION,
                     new Keyframe(0.0F, KeyframeAnimations.posVec(0.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
-                    new Keyframe(0.45F, KeyframeAnimations.posVec(-6.0F, -3.0F, 4.0F), AnimationChannel.Interpolations.CATMULLROM),
+                    // X halved with its parent above, for the same reason and to keep the sweep's
+                    // shape intact rather than flattening one joint of it. Y and Z are left at the
+                    // adult's values: they lift and push the thigh, which is what detaches nothing.
+                    // The ROTATION channel is blameless throughout — this bone pivots at the hip, so
+                    // no amount of swinging can separate it; only a POSITION offset can.
+                    new Keyframe(0.45F, KeyframeAnimations.posVec(-3.0F, -3.0F, 4.0F), AnimationChannel.Interpolations.CATMULLROM),
                     new Keyframe(0.75F, KeyframeAnimations.posVec(0.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM)
             ))
             .addAnimation("left_leg1", new AnimationChannel(AnimationChannel.Targets.ROTATION,

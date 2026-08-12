@@ -463,11 +463,11 @@ public final class HellHippoAnimations {
                   new Keyframe(3.0F, KeyframeAnimations.degreeVec(0.0F, 0.0F, -5.0F), AnimationChannel.Interpolations.CATMULLROM)
                   ))
                   .addAnimation("Hipopotamo_Infernal", new AnimationChannel(AnimationChannel.Targets.POSITION,
-    	new Keyframe(0.0F, KeyframeAnimations.posVec(0.0F, -29.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
-                  new Keyframe(0.75F, KeyframeAnimations.posVec(0.0F, -27.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
-                  new Keyframe(1.5F, KeyframeAnimations.posVec(0.0F, -29.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
-                  new Keyframe(2.25F, KeyframeAnimations.posVec(0.0F, -31.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
-                  new Keyframe(3.0F, KeyframeAnimations.posVec(0.0F, -29.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM)
+    	new Keyframe(0.0F, KeyframeAnimations.posVec(0.0F, 0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
+                  new Keyframe(0.75F, KeyframeAnimations.posVec(0.0F, 2F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
+                  new Keyframe(1.5F, KeyframeAnimations.posVec(0.0F, 0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
+                  new Keyframe(2.25F, KeyframeAnimations.posVec(0.0F, -2F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
+                  new Keyframe(3.0F, KeyframeAnimations.posVec(0.0F, 0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM)
                   ))
                   .addAnimation("eyes", new AnimationChannel(AnimationChannel.Targets.SCALE,
     	new Keyframe(1.5F, KeyframeAnimations.scaleVec(1.0F, 1.0F, 1.0F), AnimationChannel.Interpolations.CATMULLROM),
@@ -536,7 +536,7 @@ public final class HellHippoAnimations {
 
           public static final AnimationDefinition swim = AnimationDefinition.Builder.withLength(1.15F).looping()
                   .addAnimation("Hipopotamo_Infernal", new AnimationChannel(AnimationChannel.Targets.POSITION,
-                          new Keyframe(0.0F, KeyframeAnimations.posVec(0.0F, -29.0F, 0.0F), AnimationChannel.Interpolations.LINEAR)
+                          new Keyframe(0.0F, KeyframeAnimations.posVec(0.0F, 0F, 0.0F), AnimationChannel.Interpolations.LINEAR)
                   ))
                   .addAnimation("neck", new AnimationChannel(AnimationChannel.Targets.ROTATION,
                           new Keyframe(0.0F, KeyframeAnimations.degreeVec(-10.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),

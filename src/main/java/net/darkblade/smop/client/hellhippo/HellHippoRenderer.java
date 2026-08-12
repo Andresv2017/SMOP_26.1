@@ -25,6 +25,8 @@ public class HellHippoRenderer
     private static final Identifier MALE = SMOP.id("textures/entity/hell_hippo/male_hell_hippo.png");
     private static final Identifier FEMALE = SMOP.id("textures/entity/hell_hippo/female_hell_hippo.png");
     private static final Identifier BABY = SMOP.id("textures/entity/hell_hippo/baby_hell_hippo.png");
+    private static final Identifier MALE_SEAWEED = SMOP.id("textures/entity/hell_hippo/male_hell_hippo_seaweed.png");
+    private static final Identifier FEMALE_SEAWEED = SMOP.id("textures/entity/hell_hippo/female_hell_hippo_seaweed.png");
 
     public HellHippoRenderer(EntityRendererProvider.Context context) {
         super(context,
@@ -48,6 +50,7 @@ public class HellHippoRenderer
             state.animator = animatable.animator();
         }
         state.male = entity.isMale();
+        state.seaweed = entity.hasSeaweed();
     }
 
     /**
@@ -67,7 +70,12 @@ public class HellHippoRenderer
     @Override
     public @NotNull Identifier getTextureLocation(@NotNull HellHippoRenderState state) {
         if (state.isBaby) {
+            // No baby_hell_hippo_seaweed.png exists, which is also why the entity never lets a calf
+            // grow any — see HellHippoEntity#tickSeaweed.
             return BABY;
+        }
+        if (state.seaweed) {
+            return state.male ? MALE_SEAWEED : FEMALE_SEAWEED;
         }
         return state.male ? MALE : FEMALE;
     }
