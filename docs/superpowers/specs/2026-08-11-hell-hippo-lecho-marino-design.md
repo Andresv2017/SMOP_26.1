@@ -92,15 +92,22 @@ reimplementar nada.
    el override se estaba saltando: `calculateEntityAnimation()`, el manejo de `onClimbable`, y el
    empujón anti-atasco de `horizontalCollision` (`LivingEntity.java:2258-2260`).
 
-### El sesgo de hundimiento, concretamente
+### La vertical, concretamente
+
+`travel()` elige **una de dos** verticales según lo que esté haciendo la navegación. No se suman.
 
 ```java
 @Override
 public void travel(@NotNull Vec3 travelVector) {
     super.travel(travelVector);
-    if (this.isEffectiveAi() && this.isInWater() && !this.onGround() && !this.isVehicle()) {
-        Vec3 v = this.getDeltaMovement();
-        this.setDeltaMovement(v.x, v.y - SINK_ACCELERATION, v.z);
+    if (!this.isEffectiveAi() || !this.isInWater() || this.isVehicle()) {
+        return;
+    }
+    Vec3 velocity = this.getDeltaMovement();
+    if (this.isSwimmingFallback()) {
+        this.setDeltaMovement(velocity.x, velocity.y + this.swimClimbRate(), velocity.z);
+    } else if (!this.onGround()) {
+        this.setDeltaMovement(velocity.x, velocity.y - SINK_ACCELERATION, velocity.z);
     }
 }
 ```
@@ -112,8 +119,39 @@ public void travel(@NotNull Vec3 travelVector) {
   Esto es lo que hace que la sección 5 (*dormir en el lecho*) funcione, y es deliberado.
 - **`SINK_ACCELERATION` se queda en 0.03.** Con el damping en Y de 0.8 de vuelta en juego, la
   terminal es `(0.005 + 0.03) / (1 − 0.8)` ≈ **0.175 b/t** (~3.5 bloques/s): baja con peso y sin
-  parecer una piedra. Hoy ese mismo 0.03 no tiene techo ninguno porque el `travel()` casero no
-  amortigua la Y en absoluto.
+  parecer una piedra. En el `travel()` casero ese mismo 0.03 no tenía techo ninguno, porque no
+  amortiguaba la Y en absoluto.
+
+### El ascenso: nada en el stack lo producía
+
+**Esto no estaba en el diseño original y es la corrección más importante del documento.** El
+`SINK_ACCELERATION` de arriba se justificó solo contra la bajada, y con eso el fallback de nado de la
+sección 2 no podía funcionar: el animal encontraba la ruta por encima del obstáculo y no era capaz de
+subir por ella.
+
+Vanilla tiene exactamente dos mecanismos de ascenso, y el hipo **no tenía ninguno de los dos**:
+
+1. **La ruta del salto.** Un mob terrestre trepa porque su `MoveControl` llama a
+   `getJumpControl().jump()` (`MoveControl.java:104-111`), lo que levanta `jumping`, lo que `aiStep`
+   convierte en el empujón de `jumpInFluid`. Pero `DirectionalMoveControl` es horizontal puro y nunca
+   pide salto — cero menciones de `jump` en el archivo, y cero `getJumpControl`/`setJumping` en todo
+   SMOP y todo DeluxeLib.
+2. **La ruta del nado.** Un mob acuático trepa porque su move control conduce la Y directamente hacia
+   el waypoint. `DirectionalMoveControl` tampoco toca la Y.
+
+Y aunque la primera hubiera existido, el sesgo la habría anulado: contra el damping de 0.8, el 0.04
+de `jumpInFluid` se estabiliza en `(0.8·0.04 − 0.005 − 0.03) / 0.2` = **−0.015**. Seguiría bajando.
+
+La solución sigue la segunda ruta, que es la que usan los mobs acuáticos de vanilla. `swimClimbRate()`
+copia la forma de `DrownedMoveControl` — `speed × (dy/dist) × 0.1`, con `dy/dist` la componente Y
+normalizada hacia el waypoint. Cero en llano, negativa al bajar.
+
+**Por eso las dos verticales son alternativas y no capas.** El sesgo mantiene al animal pegado al
+lecho mientras camina; mientras nada, pegarlo al lecho es justo lo que no se quiere.
+
+*Síntoma que producía:* el animal subía **exactamente un bloque** y no más — que es lo que da la
+física de escalón de `move()` con el `STEP_HEIGHT = 1.0` que el hipo declara, sin que intervenga
+ningún salto.
 
 ### `getFluidJumpThreshold()` se queda — pero su javadoc está al revés
 
@@ -183,6 +221,19 @@ agua o al completarse la ruta acuática, vuelve a terrestre.
 | `isDone()` | `DirectionalMoveControl:187`, goals | el move control corta la velocidad a 0 nadando |
 | `getPath()` | `PathCarrot` (lookahead de steering) | el steering pierde la ruta y va al waypoint crudo |
 | `stop()` / `recomputePath()` | goals, `LeaveWaterShakeGoal:103` | la navegación acuática sigue viva tras parar |
+
+Además de esos, se delegan `shouldRecomputePath`, `isStuck` y `getTargetPos`. `isStableDestination`
+**no** se delega nunca — es de lo que depende la sección 3, y su javadoc lo explica.
+
+`isSwimming()` es público porque la entidad tiene que leerlo: es lo que elige entre las dos
+verticales de la sección 1. Los cambios de modo se trazan a nivel `debug`, solo en transiciones.
+
+### Lo que esto NO arregla
+
+`DirectionalMoveControl` no puede saltar, y no solo bajo el agua: **en tierra tampoco**. Ningún mob
+de DeluxeLib que lo use puede superar un obstáculo más alto que su `STEP_HEIGHT`. Al hipo se le nota
+poco porque declara `STEP_HEIGHT = 1.0`, que cubre casi todo el terreno natural. Es un bug real de la
+librería, vive en el otro repo, y queda fuera del alcance de este spec.
 
 ---
 
@@ -282,18 +333,80 @@ en cuanto la locomoción funciona. No hay código nuevo en esta sección — es 
 | comportamiento | qué lo hace funcionar |
 |---|---|
 | **Combate** (perseguir y morder) | `AnimatableMeleeAttackGoal` navega vía `getNavigation()`, hereda la sección 2. `faceCombatTarget()` y el ancla de la `HitWindow` leen `getYRot()` — son horizontales, no necesitan cambio. |
-| **Dormir en el lecho** | `SleepGoal.canUse()` no mira agua ni suelo: ya podía. Lo que faltaba era que el cuerpo se quedara quieto en el fondo, que es el sesgo de hundimiento de la sección 1 aplicándose también con el movimiento bloqueado. |
+| **Dormir en el lecho** | `SleepGoal.canUse()` no mira agua ni suelo: ya podía. Lo que faltaba era que el cuerpo se quedara quieto en el fondo, que es el sesgo de hundimiento de la sección 1. |
 | **Tentación** (`TemptGoal`) | Usa `getNavigation().moveTo` — hereda la sección 2. |
-| **Seguir a la madre** (`FollowParentGoal`) | Igual. |
+| **Seguir a la madre** | Igual, más la distancia de la sección 6. |
+
+### Lo que la auditoría encontró
+
+Se leyó cada uno buscando gates de agua o de suelo. Tres resultados que no eran obvios:
+
+- **`SleepGoal.start()` llama a `getNavigation().stop()`** (`SleepGoal.java:123`), y nuestro `stop()`
+  limpia el flag de nado. Así que un hipo que se duerme mientras el fallback conducía cae a modo
+  caminar, y `travel()` le aplica el hundimiento en vez del ascenso. El caso borde está cubierto sin
+  código extra, pero lo estaba por suerte y ahora está escrito.
+- **`AnimatableMeleeAttackGoal` tiene un `dy <= 1.5`** (línea 92) que solo decide **cuándo parar la
+  navegación**, no si se ataca. El ataque se decide con `distanceToSqr` en 3D contra el reach. Así que
+  un objetivo por encima se sigue persiguiendo en vez de plantarse ante él, que es lo correcto.
+- **El mordisco es una caja horizontal.** La `HitWindow` es `box(2.6, 1.1)` anclada en
+  `(1.9, 0.0, 0.9)`, así que un objetivo nadando **por encima** del hipo queda fuera de su alcance
+  vertical aunque el goal decida atacar. No es una regresión — siempre fue así, y en tierra no se veía
+  porque los objetivos están en el suelo. Queda anotado como límite conocido, no como bug a arreglar
+  aquí.
+
+`TemptGoal` y `BreedGoal` no tienen ningún gate de agua ni de suelo.
+
+---
+
+---
+
+## Sección 6 · Añadidos durante la implementación
+
+Dos peticiones que llegaron con el trabajo ya en marcha y se hicieron aquí porque tocan la misma zona.
+
+### El shake, prohibido dentro del agua
+
+`IdleAnimationGoal` ya tenía el hook exacto, así que es una línea en el registro:
+`.condition(animal -> !animal.isInWater())`.
+
+`isInWater()` y no `isSwimDeep()` **a propósito**: es el mismo predicado que ya usa
+`LeaveWaterShakeGoal`, y los dos caminos que llegan a este único clip no deben discrepar sobre cuándo
+vale. Pasarlo por `condition()` en vez de por `canUse()` da además que un hipo que se meta al agua a
+mitad del gesto lo pierda, porque el goal reevalúa esa condición mientras corre.
+
+### `SMOPFollowParentGoal`
+
+Vanilla para la cría a tres bloques centro-a-centro, escrito a fuego como un `9.0` literal en
+`canUse` y en `canContinueToUse`, con `parent` privado — no hay forma de ensanchar la distancia
+heredando sin reimplementar también la búsqueda del padre. La clase nueva es esa con el número fuera.
+
+Tres bloques es una medida de vaca. La distancia es centro-a-centro, así que lo que compra depende de
+lo anchos que sean los animales:
+
+| | ancho adulto | ancho cría | se tocan a | hueco a 3 bloques |
+|---|---|---|---|---|
+| Vaca | 0.9 | 0.45 | 0.675 | 2.33 |
+| Hell Hippo | 2.5 | 1.25 | 1.875 | **1.13** |
+
+La cría sale de `LivingEntity#getAgeScale`, que devuelve 0.5. Y sobre estos rigs el modelo sobresale
+mucho de la caja — el javadoc del propio hipo documenta que el morro queda 2.1 bloques por delante de
+la cara frontal del hitbox — así que a tres bloques la cabeza de la cría se ve dentro de la madre.
+El hipo usa **5.0**, que deja unos 3 bloques entre cuerpos. Número de ojo.
+
+Dos desviaciones deliberadas del original, ambas por robustez: el radio de búsqueda es
+`max(8, followDistance × 2)` (con 8 fijo, una distancia mayor que 8 dejaría el goal muerto en
+silencio, porque la búsqueda no devolvería ningún adulto que pudiera calificar), y `tick()` comprueba
+`parent != null`, que vanilla desreferencia sin mirar.
 
 ---
 
 ## Fuera de alcance
 
-- **Cría bajo el agua.** `BreedGoal` heredará el arreglo de navegación igual que los demás, pero no
-  es un objetivo de verificación de este spec.
-- **El gesto idle (`shake`) sumergido.** Se queda como está: solo en tierra, más el que ya dispara
-  `LeaveWaterShakeGoal` al salir del agua.
+- **Cría bajo el agua.** `BreedGoal` hereda el arreglo de navegación igual que los demás, pero no es
+  un objetivo de verificación de este spec.
+- **Que `DirectionalMoveControl` pueda saltar.** Es un bug real y afecta a todos los mobs de
+  DeluxeLib, en tierra y en agua. Vive en el otro repo.
+- **Que el mordisco alcance hacia arriba.** Límite conocido de la `HitWindow`, no una regresión.
 - **Todo lo montado.** `travel()` sigue delegando en `super` cuando `isVehicle()`; el pilotaje del
   jinete es fase 3.
 
@@ -311,17 +424,31 @@ en cuanto la locomoción funciona. No hay código nuevo en esta sección — es 
 8. En agua de **un bloque** camina con el clip `walk`; en agua de **dos** usa `swim`.
 9. Sigue sacudiéndose al salir del agua y siguen creciendo las algas al sumergirse del todo — la
    sección 4 no las tocó.
+10. **No** hace el gesto de shake mientras está dentro del agua, y sí lo sigue haciendo en seco.
+11. Una cría se para a unos 5 bloques de su madre, con hueco visible entre los dos cuerpos, y sigue
+    arrancando detrás de ella cuando se aleja.
 
 ## Riesgos
 
 - **El wrapper de navegación es la pieza con más superficie.** `PathNavigation` tiene muchos métodos
-  públicos y los goals los usan de forma dispersa. La tabla de la sección 2 lista los cuatro que
-  sabemos que se llaman; si aparece un quinto, se manifestará como un comportamiento raro solo
-  durante el fallback de nado, que es el estado menos frecuente y por tanto el más fácil de no ver en
-  pruebas cortas.
-- **Dos números son de ojo, no de razonamiento.** `SWIM_DEPTH_FRACTION` (dónde cae la raya del gait)
-  y `SINK_ACCELERATION` (cuánto pesa al bajar). Ambos se ajustan mirando el render. El resto de las
-  constantes del spec están derivadas de código de vanilla que se puede citar.
+  públicos y los goals los usan de forma dispersa. La tabla de la sección 2 lista los que sabemos que
+  se llaman; si aparece uno más, se manifestará como un comportamiento raro solo durante el fallback
+  de nado, que es el estado menos frecuente y por tanto el más fácil de no ver en pruebas cortas.
+- **Tres números son de ojo, no de razonamiento.** `SWIM_DEPTH_FRACTION` (dónde cae la raya del
+  gait), `SINK_ACCELERATION` (cuánto pesa al bajar) y `FOLLOW_PARENT_DISTANCE` (cuánto se separa la
+  cría). El `SWIM_CLIMB_GAIN` no cuenta: es el 0.1 de `DrownedMoveControl`. El resto de las
+  constantes están derivadas de código de vanilla que se puede citar.
 - **Un caminante de fondo puro no puede escalar paredes.** El fallback de la sección 2 lo cubre, pero
   solo cuando el destino es inalcanzable a pie *y* alcanzable a nado. Un destino inalcanzable de las
   dos formas simplemente no se intenta, que es el comportamiento correcto.
+
+## Lección: por qué se coló el bug del ascenso
+
+El spec justificó `SINK_ACCELERATION` **solo contra la bajada** — cuánto tarda en caer un bloque — y
+nunca lo contrastó con la subida, pese a que el fallback de nado de la sección 2 dependía de poder
+subir. Las dos secciones se diseñaron por separado y su interacción no se calculó.
+
+Es barato de detectar y caro de encontrar en juego: la aritmética que lo demuestra
+(`(0.8·0.04 − 0.035) / 0.2 = −0.015`) es una línea, y el síntoma in-game — subir exactamente un
+bloque — era indistinguible de "el fallback no se activa". Cuando dos secciones de un spec empujan la
+misma variable en direcciones opuestas, hay que hacer la cuenta en el spec.
