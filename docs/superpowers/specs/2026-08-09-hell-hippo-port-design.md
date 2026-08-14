@@ -10,15 +10,15 @@ Depende de: `AnimSound` e `IdleAnimationGoal`, ya implementados.
 | Fase | Estado |
 |---|---|
 | **1 — El mob vivo** | **Completa.** Con tres desviaciones respecto de lo escrito aquí, marcadas abajo con *(desviación)*. |
-| **2 — Domesticación** | Sin empezar. |
+| **2 — Domesticación** | **2a y 2b completas**, con desviaciones marcadas abajo. Falta la 2c (cofre, armadura, inventario). |
 | **3 — Montura y sistemas sociales** | Sin empezar. |
 
 La Fase 1d (*Agua*) se rehízo entera después de escribirse este documento; el diseño que rige ahora
 es `2026-08-11-hell-hippo-lecho-marino-design.md` y lo que dice esta sección se conserva solo como
 registro de lo que se pidió en su día.
 
-Dos ramas muertas esperan a la Fase 2b: `picksItsOwnFights()` y `tickSeaweed()` leen `isSaddled()`,
-que hoy nunca puede ser cierto porque `canUseSlot` no está implementado en ninguna parte del mod.
+Las dos ramas que leían `isSaddled()` — `picksItsOwnFights()` y `tickSeaweed()` — ya no están muertas:
+la 2b implementó `canUseSlot` y metió el mob en la tag de la silla.
 
 ## Dónde encaja
 
@@ -72,6 +72,23 @@ atributo a mano — son equipamiento, con su persistencia, su render y su reducc
 resueltos por vanilla. `canUseSlot` cubre la condición que no depende del jugador (domesticado, no
 cría); la condición que **sí** depende de quién interactúa (ser el jugador de confianza, y que el
 mob esté dormido) va en `mobInteract`, que es el único lugar con esa información.
+
+> ***(desviación) — "sale gratis" era verdad a medias, y costó un bug.*** Faltan dos cosas que no son
+> opcionales:
+>
+> **La tag.** La silla se declara con
+> `setAllowedEntities(EntityTypeTags.CAN_EQUIP_SADDLE)` (`Equippable#saddle`), y `canBeEquippedBy`
+> rechaza toda entidad fuera de ella. Sin añadir el mob a
+> `data/minecraft/tags/entity_type/can_equip_saddle.json`, `isEquippableInSlot` devuelve false y
+> ensillar **no hace absolutamente nada**, sin error ni pista. Con `"replace": false`, para sumar a la
+> lista de vanilla en vez de sustituirla.
+>
+> **Negarse tiene que consumir la acción.** La silla también trae `setEquipOnInteract(true)`, y
+> `Player#interactOn` llama a `entity.interact(...)` primero pero **sigue** hasta
+> `itemStack.interactLivingEntity(...)` si el resultado no consume — y `InteractionResult.Fail` no
+> consume. O sea que un `return FAIL` desde `mobInteract` deja que la ruta genérica equipe la silla de
+> todas formas, saltándose las condiciones que se acaban de comprobar. Hay que devolver
+> `InteractionResult.CONSUME` (un `Success` con swing `NONE`), o la negativa es decorativa.
 
 Se gana gratis, sin escribir nada: ciclo de sueño de seis fases, acciones guionadas, animador de
 DeluxeLib con `AnimSound`, `IdleAnimationGoal`, género, bloqueo de movimiento, grupo/líder, cría.
@@ -232,21 +249,83 @@ progreso al recibir daño y a través de guardar/cargar.
 
 #### 2b · Confianza y silla
 
-La cadena del legacy se preserva tal cual, porque es lo mejor que tiene el mob:
+> ***(desviación) — esta sub-fase se quedó corta al escribirla.*** Describía una cadena de dos pasos.
+> Al ir al legacy a resolver una contradicción con la 2a aparecieron **tres pasos más** en medio, y
+> son los que le dan sentido al conjunto. Lo que sigue es la cadena real, ya implementada.
 
-1. **Confianza** — alimentarlo a mano con carne cruda (`Items.BEEF` en el legacy); una probabilidad
-   de 1 en 3 por intento. Al lograrlo guarda el UUID del jugador. El goal de tentación y la cría
-   usan zanahoria y carne (`CARROT`, `BEEF`).
-2. **Silla** — solo se le puede poner **mientras duerme** y **solo el jugador de confianza**.
-   Ponerla lo despierta.
+```
+carne cruda → 1 en 3 → confianza
+                          ↓
+              te planta cara, 300 ticks (clip intimidate + gruñido)
+                          ↓                    ↘ si lo miras 5 s → smop:fear
+              poción de debilidad → lo tumba    ↘ si expira despierto → te olvida
+                          ↓
+                   silla → despierta ensillado
+```
 
-Es una domesticación en dos etapas con una ventana de vulnerabilidad, y vale la pena conservarla.
+**1 · Confianza.** Carne cruda en mano, **1 en 3 por intento**. Es un dado, no un contador — cada
+carne es una tirada independiente y el coste no tiene techo. *(La 2a afirma que los tres rituales del
+mod cuentan intentos hacia una meta; para este es falso. Cuentan el Krifto y el Niras, que son los dos
+usuarios reales de `TameProgress`.)*
+
+El vínculo es la **propiedad de vanilla**, no un flag propio: 1.20.1 llevaba un `DATA_TRUSTING`
+sincronizado junto a un `trustingPlayerUUID` que guardaba y cargaba a mano, y `TamableAnimal` ya trae
+las dos cosas, sincronizadas y persistidas, y de propina rechaza atacar a su dueño.
+
+*Desviación menor:* las crías quedan fuera del ritual. La carne está también en `FOOD_ITEMS`, así que
+interceptarla en una cría costaría el "alimentar para crecer" de vanilla a cambio de un vínculo
+inservible — la silla exige adulto.
+
+**2 · El plante.** Recién ganada la confianza y **mientras no lleve silla**, a menos de 10 bloques y
+con línea de visión, se planta durante **300 ticks**. No se mueve: `isMovementLocked()` lo incluye, así
+que todos los goals de movimiento se retiran, y solo gira sobre su eje siguiendo al jugador.
+
+**3 · No lo mires.** Sostenerle la mirada de frente (`dot > 0.95`) durante **100 ticks** seguidos
+aplica `smop:fear` 300 ticks.
+
+**4 · Y caduca.** Si el reloj llega a cero **estando despierto**, pierde la confianza entera y vuelve a
+ser salvaje — con lo que puede volver a atacarte. El reloj corre aunque el dueño se desconecte; solo
+el *arranque* exige tenerlo delante. Atarlo a la presencia del dueño convertiría el cierre de sesión
+en un reinicio gratis.
+
+**5 · La poción de debilidad es la salida.** Y es la pieza que faltaba: `trySaddle` exige un animal
+dormido, y esperar a que anochezca mientras te lo comen con los ojos no es un plan. La debilidad lo
+tumba en el sitio, a cualquier hora. Mientras duerme, el plante **se suspende entero** — reloj parado,
+sin clip, sin fear — y esa congelación es justo la tregua que compras.
+
+**6 · La silla.** Solo **dormido por la poción** (`isKnockedOut()`, no el sueño natural de la noche) y
+solo el dueño. Ponerla detiene el plante, gasta la debilidad y lo despierta.
 
 Se agrega también el filtro de objetivo del legacy: un Hell Hippo con dueño no ataca a ese jugador ni
-a sus mascotas.
+a sus mascotas. `TamableAnimal#canAttack` ya cubre al dueño; lo añadido son sus otras mascotas.
 
-*Verificación:* alimentarlo repetidamente termina ganando su confianza; la silla es rechazada
-despierto o por otro jugador; aceptada dormido por el de confianza, y lo despierta.
+### La señalización, que el port se cargó sin darse cuenta
+
+Este documento decide, con razón, que **los mensajes de chat se eliminan**. Pero en 1.20.1 esos
+mensajes eran *la única señal* de los pasos 2 a 5: "is now intimidating", "you are terrified", "has
+calmed down and forgotten your trust". Sin ellos la cadena es indescifrable — nadie deduce que hay que
+tirarle una poción.
+
+Lo sustituye el clip `intimidate`, que llevaba meses portado y sin registrar, más un gruñido al
+entrar. Si el jugador no puede ver que hay un reloj corriendo, esto se lee como que el mob se
+des-domestica solo.
+
+**El clip se partió en tres.** Llegó como una sola pieza de 7.5 s y así se registró al principio, y se
+veía mal por una razón que ningún `.looping()` arregla: un clip de 7.5 s cubriendo una ventana de 15 s
+tiene que reiniciarse, y el reinicio pasa por la salida de la pose de la que está hecho su último
+segundo — el animal se relajaba y volvía a entrar, dos veces por plante. Ahora son `intimidate_in`
+(0.65 s), `intimidate_loop` (2.0 s, `.looping()`) e `intimidate_out` (0.95 s, conserva el parpadeo),
+encadenados como el ciclo de sueño.
+
+*Nota de autoría:* el original tenía **dos periodos distintos** — cuello, cabeza y mandíbula a 2.0 s;
+cuerpo y torso a ~2.65 s — así que no existía ventana corta donde todo cerrara a la vez, que es por lo
+que estaba autorizado como one-shot. El bote del cuerpo y el hinchado del torso se re-temporizaron a
+2.0 s para que el bucle cierre sin costura, a cambio de que vayan un pelín más rápidos.
+
+*Verificación:* alimentarlo repetidamente termina ganando su confianza; se planta sin moverse y
+girando hacia el jugador; mirarlo fijo da fear; dejar correr el reloj pierde la confianza; la poción lo
+tumba de día y con el jugador al lado; la silla entra dormido por poción y es rechazada despierta, por
+otro jugador, o dormido de noche por su cuenta.
 
 #### 2c · Cofre, armadura e inventario
 
