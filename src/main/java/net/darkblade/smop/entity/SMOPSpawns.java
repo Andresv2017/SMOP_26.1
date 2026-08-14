@@ -49,6 +49,30 @@ public final class SMOPSpawns {
                 .spawnRate(12, 2, 5)
                 .biomeTag(BiomeTags.IS_RIVER)
                 .submit();
+
+        // Savannas and swamps, one at a time. 1.20.1 shipped savanna only, at weight 15 in packs of
+        // 1-3; neither number survives — a two-and-a-half-block animal arriving in threes reads as a
+        // wall of hippo, and one is what this mob is for.
+        //
+        // Weight 4, anchored against what it is competing with rather than carried over. The savanna
+        // already holds 52 points of CREATURE weight (sheep 12, pig 10, chicken 10, armadillo 10,
+        // cow 8, horse 1, donkey 1) and the swamp 50 (the same farm animals plus frog 10). The
+        // legacy's 15 would take 22% of every roll — making this the single most likely animal in
+        // the biome, ahead of sheep, which is how it read in play. 4 puts it near the horse: the
+        // large, biome-flavoured animal you come across now and then, not the one you wade through.
+        //
+        // Worth remembering when tuning: a female rolls a companion calf half the time
+        // (CALF_COMPANION_CHANCE), so the head count runs about 1.25x whatever this weight suggests.
+        //
+        // An explicit biome list rather than BiomeTags.IS_SAVANNA, because the builder's biomeTag()
+        // and biomes() clear each other and the swamps carry no tag the savannas share. Both swamps
+        // are in: the mangrove is where an amphibious animal this size belongs most, even if its mud
+        // floor makes it rarer there — see HellHippoEntity#checkHellHippoSpawnRules.
+        DeluxeBiomeSpawns.builder(SMOPEntities.HELL_HIPPO::get, MobCategory.CREATURE)
+                .spawnRate(4, 1, 1)
+                .biomes(Biomes.SAVANNA, Biomes.SAVANNA_PLATEAU, Biomes.WINDSWEPT_SAVANNA,
+                        Biomes.SWAMP, Biomes.MANGROVE_SWAMP)
+                .submit();
     }
 
     private SMOPSpawns() {}

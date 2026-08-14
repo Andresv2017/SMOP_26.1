@@ -47,6 +47,9 @@ public final class SleepUrge {
     private int ticksSinceInterrupted = -1;
     private boolean wakeRequested;
 
+    /** @see #forceSleep(boolean) */
+    private boolean forced;
+
     public SleepUrge(Mob mob) {
         this.mob = mob;
         this.stagger = mob.getId() % 10;
@@ -69,13 +72,46 @@ public final class SleepUrge {
         return this.night;
     }
 
-    /** Night, no target for a while, and far enough past the last waking. */
+    /** Night, no target for a while, and far enough past the last waking — or forced outright. */
     public boolean wantsToSleep() {
+        if (this.forced) {
+            return true;
+        }
         if (!this.night || this.ticksSinceNoTarget < SLEEP_DELAY_TICKS + this.stagger) {
             return false;
         }
         // Never woken this session: nothing to wait out.
         return this.ticksSinceInterrupted < 0 || this.ticksSinceInterrupted >= WOKE_UP_DELAY_TICKS;
+    }
+
+    /**
+     * Puts the mob under, and keeps it under, regardless of the clock or of who is standing over it.
+     *
+     * <p>Written for the Hell Hippo's weakness potion, which is how a player opens the window to
+     * saddle one — but the concept is not hippo-specific and any mob with a "knock it out" item wants
+     * the same thing.
+     *
+     * <p><b>It has to defeat three separate gates, not one.</b> Sleep normally requires night and a
+     * quiet spell ({@link #wantsToSleep()}), it refuses to start with anything threatening nearby, and
+     * it ends the moment the sun comes up or something walks over — and for the hippo a player
+     * standing next to it <em>is</em> a threat ({@code shouldWakeOnPlayerProximity}), which is
+     * unavoidable when the whole point is that the player is right there with a saddle. So
+     * {@link SleepGoal} reads this flag to skip its threat scan and its daylight check too.
+     *
+     * <p>1.20.1 solved the same problem with a {@code sleepingDueToEnvironment} boolean whose comment
+     * read <em>"importante para evitar que lo despierte el sol"</em>. Same idea, one flag instead of
+     * an inverted one.
+     *
+     * <p>Clearing it does not wake the mob by itself — pair it with {@link #requestWake()} when the
+     * reason for the forced sleep has gone.
+     */
+    public void forceSleep(boolean value) {
+        this.forced = value;
+    }
+
+    /** Whether this sleep is being held open from outside. @see #forceSleep(boolean) */
+    public boolean isForced() {
+        return this.forced;
     }
 
     /** Something woke the mob from outside the goal — taking damage, for instance. */

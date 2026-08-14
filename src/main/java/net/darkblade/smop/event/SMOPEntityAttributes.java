@@ -48,6 +48,14 @@ public final class SMOPEntityAttributes {
                 Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
                 SalmonEntity::checkSalmonSpawnRules,
                 RegisterSpawnPlacementsEvent.Operation.REPLACE);
+
+        // ON_GROUND and not IN_WATER, despite the animal being amphibious: this decides where it is
+        // first placed, not where it may go. A hippo walks into the water on its own once it exists.
+        event.register(SMOPEntities.HELL_HIPPO.get(),
+                SpawnPlacementTypes.ON_GROUND,
+                Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                HellHippoEntity::checkHellHippoSpawnRules,
+                RegisterSpawnPlacementsEvent.Operation.REPLACE);
     }
 
     private SMOPEntityAttributes() {}

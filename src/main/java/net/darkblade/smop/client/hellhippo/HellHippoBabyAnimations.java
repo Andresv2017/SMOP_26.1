@@ -1289,7 +1289,7 @@ public final class HellHippoBabyAnimations {
             ))
             .build();
 
-    public static final AnimationDefinition intimidate = AnimationDefinition.Builder.withLength(7.5F)
+    public static final AnimationDefinition intimidate = AnimationDefinition.Builder.withLength(7.5F).looping()
             .addAnimation("body", new AnimationChannel(AnimationChannel.Targets.ROTATION,
                     new Keyframe(0.0F, KeyframeAnimations.degreeVec(0.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),
                     new Keyframe(0.35F, KeyframeAnimations.degreeVec(-10.0F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),

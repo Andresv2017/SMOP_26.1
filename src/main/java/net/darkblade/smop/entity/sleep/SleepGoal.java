@@ -83,7 +83,10 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
             return false;
         }
         this.urge.consumeWakeRequest();
-        return this.findThreats().isEmpty();
+        // A forced sleep ignores who is standing over the mob — see SleepUrge#forceSleep. For the
+        // Hell Hippo the player IS the threat that would block it, and also the one holding the
+        // potion that caused it.
+        return this.urge.isForced() || this.findThreats().isEmpty();
     }
 
     @Override
@@ -233,6 +236,11 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
         if (this.urge.consumeWakeRequest()) {
             this.startled = true;
             return true;
+        }
+        // A forced sleep ends only when whoever forced it says so, which the wake request above is.
+        // Neither daylight nor a bystander gets a vote — the mob was put under, it did not doze off.
+        if (this.urge.isForced()) {
+            return false;
         }
         if (!this.urge.isNight()) {
             return true;

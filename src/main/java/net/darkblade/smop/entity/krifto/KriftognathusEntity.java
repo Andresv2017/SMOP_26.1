@@ -28,6 +28,7 @@ import net.darkblade.smop.entity.egg.CustomEggBorn;
 import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
 import net.darkblade.smop.entity.sleep.SleepPhase;
+import net.darkblade.smop.entity.tame.TameProgress;
 import net.darkblade.smop.sound.SMOPSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
@@ -1197,27 +1198,15 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     // ───────────────────────────────────────────────────── GROUND TAMING ─────
 
     /**
-     * Feedings logged so far toward {@link #feedGoal}. Not synced — only {@link TameFeedGoal}, which
-     * is server-only, ever reads it.
+     * The ritual's bookkeeping. Used to be two fields and two methods right here; it moved out to
+     * {@link TameProgress} because the Nirasmosaurus and the Hell Hippo count the same way even
+     * though they get fed completely differently. Only {@link TameFeedGoal}, which is server-only,
+     * ever touches it.
      */
-    private int feedProgress;
-    /** Rolled on the first feeding, in [{@link #FEED_GOAL_MIN}, {@link #FEED_GOAL_MAX}]. */
-    private int feedGoal;
+    private final TameProgress tameProgress = new TameProgress(this, FEED_GOAL_MIN, FEED_GOAL_MAX);
 
-    /**
-     * Logs one feeding and returns the new total. Rolls {@link #feedGoal} on the very first call so
-     * a fresh krifto's target is not fixed at spawn (and thus not the same for every one of a kind).
-     */
-    public int incrementFeedProgress() {
-        if (this.feedProgress == 0) {
-            this.feedGoal = FEED_GOAL_MIN + this.random.nextInt(FEED_GOAL_MAX - FEED_GOAL_MIN + 1);
-        }
-        return ++this.feedProgress;
-    }
-
-    /** Meaningless before the first {@link #incrementFeedProgress()} call. */
-    public int getFeedGoal() {
-        return this.feedGoal;
+    public @NotNull TameProgress tameProgress() {
+        return this.tameProgress;
     }
 
     // ───────────────────────────────────────────────────── THEFT ─────
@@ -1330,8 +1319,7 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     protected void addAdditionalSaveData(@NotNull ValueOutput output) {
         super.addAdditionalSaveData(output);
         output.putString("SpawnBiome", this.getSpawnBiomePath());
-        output.putInt("FeedProgress", this.feedProgress);
-        output.putInt("FeedGoal", this.feedGoal);
+        this.tameProgress.save(output);
         if (this.perchHostId != null) {
             output.store("PerchHost", UUIDUtil.CODEC, this.perchHostId);
         }
@@ -1341,8 +1329,7 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     protected void readAdditionalSaveData(@NotNull ValueInput input) {
         super.readAdditionalSaveData(input);
         this.setSpawnBiomePath(input.getStringOr("SpawnBiome", "default"));
-        this.feedProgress = input.getIntOr("FeedProgress", 0);
-        this.feedGoal = input.getIntOr("FeedGoal", 0);
+        this.tameProgress.load(input);
 
         this.perchHostId = input.read("PerchHost", UUIDUtil.CODEC).orElse(null);
         this.perchRestoreTicks = this.perchHostId != null ? PERCH_RESTORE_WINDOW_TICKS : 0;

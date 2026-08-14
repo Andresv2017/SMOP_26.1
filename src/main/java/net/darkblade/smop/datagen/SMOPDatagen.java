@@ -107,6 +107,10 @@ public final class SMOPDatagen {
         protected void addTranslations() {
             // Manual overrides: names auto-derivation would get wrong.
             add(SMOPItems.COOKED_NIRASMO_MEAT.get(), "Nirasmo Cooked Meat");
+            // Registry id is "hellhippo_armor" — one word, inherited from 1.20.1 and kept so the
+            // legacy recipe and model files port across unchanged. Auto-derivation would read it
+            // literally and call it "Hellhippo Armor".
+            add(SMOPItems.HELL_HIPPO_ARMOR.get(), "Hell Hippo Armor");
 
             // Everything else: krifto_meat -> "Krifto Meat", tango_feather -> "Tango Feather", ...
             autoItemNames(SMOPItems.ITEMS);

@@ -15,10 +15,17 @@ import net.darkblade.smop.entity.SMOPEntities;
 import net.darkblade.smop.entity.ai.goal.IdleAnimationGoal;
 import net.darkblade.smop.entity.ai.goal.SMOPFollowParentGoal;
 import net.darkblade.smop.entity.ai.goal.SMOPRandomStrollGoal;
+import net.darkblade.smop.effect.SMOPEffects;
 import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.DifficultyInstance;
@@ -54,6 +61,11 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemStackWithSlot;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.HasCustomInventoryScreen;
+import net.minecraft.world.inventory.ChestMenu;
 import net.darkblade.smop.entity.ai.navigation.SeabedPathNavigation;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.pathfinder.PathType;
@@ -93,10 +105,61 @@ import java.util.function.Supplier;
  * covers. The Nirasmosaurus is rideable too, so that work is used twice.
  */
 public class HellHippoEntity extends GenderedSMOPAnimal
-        implements ISleepThreatEvaluator, ISleepAwareness {
+        implements ISleepThreatEvaluator, ISleepAwareness, HasCustomInventoryScreen {
 
     /** Tempts and breeds. Carrot and beef, as in 1.20.1. */
     private static final Ingredient FOOD_ITEMS = Ingredient.of(Items.CARROT, Items.BEEF);
+
+    /**
+     * One in this many hand-fed offerings wins the animal over. Straight from 1.20.1, where the line
+     * was {@code this.random.nextInt(3) == 0}.
+     *
+     * <p><b>A roll, not a tally</b>, and that distinction is worth stating because the port spec's
+     * phase 2a claims all three of the mod's taming rituals count attempts toward a target. Two of
+     * them do — the Kriftognathus and the Nirasmosaurus, which is what {@code TameProgress} was
+     * extracted for. This one does not: every piece of beef is an independent throw of the dice, so
+     * the cost has no ceiling. A run of bad luck is part of the design.
+     */
+    private static final int TRUST_CHANCE_DENOMINATOR = 3;
+
+    /**
+     * The stare-down, as three clips rather than one. @see #registerAnimations()
+     *
+     * <p>The middle one is the only one that repeats; the other two are the entry and the release,
+     * and repeating either of those is exactly what made the single-clip version look broken.
+     */
+    private static final String ANIM_INTIMIDATE_IN = "intimidate_in";
+    private static final String ANIM_INTIMIDATE_LOOP = "intimidate_loop";
+    private static final String ANIM_INTIMIDATE_OUT = "intimidate_out";
+
+    /** How long a newly trusted hippo gives the player to produce a saddle. @see #tickIntimidation() */
+    private static final int INTIMIDATION_TICKS = 300;
+    /** It only starts sizing up someone this close, with a clear line to them. */
+    private static final double INTIMIDATION_RADIUS = 10.0D;
+    /** How square-on the player has to be looking for it to count as staring it down. */
+    private static final double STARE_DOT = 0.95D;
+    /** Ticks of unbroken staring that earn a face full of {@code smop:fear}. */
+    private static final int STARE_TICKS_TO_FEAR = 100;
+    private static final int FEAR_DURATION_TICKS = 300;
+
+    /** Set while it is sizing the player up. Synced — the clip's play condition reads it. */
+    private static final EntityDataAccessor<Boolean> INTIMIDATING =
+            SynchedEntityData.defineId(HellHippoEntity.class, EntityDataSerializers.BOOLEAN);
+
+    /**
+     * Whether it is carrying panniers. Synced because the renderer picks the coat from it.
+     *
+     * <p>Not equipment, unlike the saddle and the armour: 26.1 has slots for those two and none for a
+     * chest, so this stays a flag of the mob's own — the same shape 1.20.1 used, minus its
+     * {@code ChestedHorse} inheritance.
+     */
+    private static final EntityDataAccessor<Boolean> CHEST =
+            SynchedEntityData.defineId(HellHippoEntity.class, EntityDataSerializers.BOOLEAN);
+
+    /** Counts down from {@link #INTIMIDATION_TICKS}. Server-only. */
+    private int intimidationTicks;
+    /** Consecutive ticks the trusted player has held its gaze. Server-only. */
+    private int staringTicks;
 
     /**
      * What a wild hippo hunts, straight from 1.20.1. A {@code TargetingConditions.Selector} rather
@@ -244,13 +307,13 @@ public class HellHippoEntity extends GenderedSMOPAnimal
                 // This is what makes it walk the bed rather than crawl it, and it replaces a
                 // hand-rolled travel() override that used to do the same job badly. Vanilla's water
                 // branch interpolates BOTH its drag and its acceleration toward the land values by
-                // this attribute (LivingEntity.java:2233-2241): at 1.0 and standing on the bottom,
+                // this attribute (LivingEntity#travelInWater): at 1.0 and standing on the bottom,
                 // drag goes 0.8 -> 0.546 and acceleration 0.02 -> getSpeed(), i.e. exactly the
                 // numbers the animal walks with on dry land. 1.0 is also the attribute's declared
                 // maximum, so this is the ceiling, not an arbitrary pick.
                 //
                 // It already exists on every living entity by way of createLivingAttributes()
-                // (LivingEntity.java:338) with a default of 0; re-adding it here overwrites that
+                // (LivingEntity#createLivingAttributes) with a default of 0; re-adding it here overwrites that
                 // default, which the builder's backing HashMap allows.
                 .add(Attributes.WATER_MOVEMENT_EFFICIENCY, 1.0D);
     }
@@ -386,7 +449,170 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         if (!this.level().isClientSide()) {
             this.faceCombatTarget();
             this.tickSeaweed();
+            this.tickWeaknessSleep();
+            this.tickIntimidation();
         }
+    }
+
+    // ───────────────────────────────────────────────────── THE SADDLING WINDOW ─────
+
+    /**
+     * A splash of Weakness puts it out, and that is the only practical way to saddle one.
+     *
+     * <p><b>This is the step that makes the rest of the ritual work,</b> and the port had been
+     * missing it: {@link #trySaddle} demands a sleeping animal, and waiting for nightfall while a
+     * hippo you have just won over stares you down (see {@link #tickIntimidation()}) is not a plan.
+     * A potion is. It comes straight from 1.20.1, where the same two lines opened the window.
+     *
+     * <p>It stays under until the Weakness runs out — <em>unless it has been saddled in the
+     * meantime</em>, in which case the ceremony is over, the potion is spent early, and it gets up.
+     * That last part is 1.20.1's too, right down to which of the two ends it.
+     */
+    private void tickWeaknessSleep() {
+        boolean weakened = this.hasEffect(MobEffects.WEAKNESS);
+        if (weakened && !this.isInSleepCycle() && !this.isSaddled()) {
+            this.sleepUrge().forceSleep(true);
+            return;
+        }
+        if (this.sleepUrge().isForced() && (!weakened || this.isSaddled())) {
+            this.sleepUrge().forceSleep(false);
+            this.sleepUrge().requestWake();
+        }
+    }
+
+    // ───────────────────────────────────────────────────── INTIMIDATION ─────
+
+    /**
+     * Winning its trust is not the end of the negotiation. For {@link #INTIMIDATION_TICKS} after it
+     * decides it likes you, a hippo that is trusted but <em>not yet saddled</em> squares up to its
+     * new owner — and if that clock runs out while it is still awake, it forgets you entirely and the
+     * beef starts over.
+     *
+     * <p>Two ways out, both from 1.20.1: get a saddle on it (which needs it asleep, which needs the
+     * potion — see {@link #tickWeaknessSleep()}), or simply let it fall asleep, because the timer
+     * only takes the trust away from an animal that is awake to withdraw it.
+     *
+     * <p><b>And do not stare.</b> Holding its gaze square-on for {@link #STARE_TICKS_TO_FEAR} ticks
+     * earns {@code smop:fear}. The dot product against the player's own look vector is 1.20.1's test,
+     * unchanged.
+     *
+     * <p><b>The clip is the whole of the signposting.</b> 1.20.1 narrated every beat of this in chat
+     * — "is now intimidating", "you are terrified", "has forgotten your trust" — and the port drops
+     * chat on purpose. That leaves the {@link #ANIM_INTIMIDATE_IN in}/{@link #ANIM_INTIMIDATE_LOOP
+     * loop}/{@link #ANIM_INTIMIDATE_OUT out} clips, ported months ago and left unregistered until
+     * now, plus a sound on the way in. If the player cannot tell the clock is running, this mechanic
+     * reads as the mob randomly untaming itself.
+     */
+    private void tickIntimidation() {
+        if (!this.isTame() || this.isSaddled()) {
+            this.stopIntimidating();
+            return;
+        }
+        if (this.isIntimidating()) {
+            // Out cold, the whole display is suspended: the clock stops, it does not posture, and it
+            // certainly does not frighten anyone. That freeze IS the reprieve the potion buys — the
+            // state stays set so the negotiation resumes if it wakes without a saddle.
+            if (this.isInSleepCycle()) {
+                return;
+            }
+            // The clock runs whether or not the owner is still around, which matters: keying it to
+            // the owner being present would mean logging out reset it, and the whole point is that
+            // the window is not renewable.
+            if (--this.intimidationTicks <= 0) {
+                this.forgetTrust();
+                return;
+            }
+            if (this.getOwner() instanceof Player watcher) {
+                this.faceIntimidationTarget(watcher);
+                this.tickStare(watcher);
+            }
+            return;
+        }
+        // Only the START needs them in the room.
+        if (this.getOwner() instanceof Player player
+                && this.distanceTo(player) < INTIMIDATION_RADIUS
+                && this.hasLineOfSight(player)) {
+            this.startIntimidating();
+        }
+    }
+
+    private void tickStare(Player player) {
+        Vec3 toHippo = this.position().subtract(player.position()).normalize();
+        if (player.getLookAngle().normalize().dot(toHippo) <= STARE_DOT) {
+            this.staringTicks = 0;
+            return;
+        }
+        if (++this.staringTicks < STARE_TICKS_TO_FEAR) {
+            return;
+        }
+        this.staringTicks = 0;
+        if (!player.hasEffect(SMOPEffects.FEAR)) {
+            player.addEffect(new MobEffectInstance(SMOPEffects.FEAR, FEAR_DURATION_TICKS, 0));
+        }
+    }
+
+    /**
+     * Squares up: turns on the spot to keep the player in front of it, and goes nowhere.
+     *
+     * <p>The turn is the move control's own, so it is the same capped, eased rotation the animal uses
+     * everywhere else rather than a snap — it just has no waypoint to walk toward, because
+     * {@link #isMovementLocked()} has taken the wheel off every movement goal for the duration.
+     */
+    private void faceIntimidationTarget(Player player) {
+        if (this.moveControl instanceof DirectionalMoveControl<?> control) {
+            control.faceTarget(player);
+        }
+    }
+
+    /**
+     * Standing its ground is part of the display. A hippo that wandered off mid-stare would read as
+     * having lost interest, and 1.20.1 pinned it for the same reason — {@code travel()} there opened
+     * with {@code if (this.isIntimidating()) { setDeltaMovement(ZERO); navigation.stop(); }}.
+     *
+     * <p>Going through the base class's lock rather than zeroing the motion by hand is what also
+     * makes every movement goal stand down instead of fighting it every tick.
+     */
+    @Override
+    public boolean isMovementLocked() {
+        return super.isMovementLocked() || this.isIntimidating();
+    }
+
+    private void startIntimidating() {
+        this.entityData.set(INTIMIDATING, true);
+        this.intimidationTicks = INTIMIDATION_TICKS;
+        this.staringTicks = 0;
+        // Started by hand because the animator only auto-starts REPEATING clips; this one chains
+        // into the loop on its own once it finishes. @see #registerAnimations()
+        this.startAction(ANIM_INTIMIDATE_IN);
+        // The only audible warning that a clock is running, now that the chat lines are gone.
+        this.playSound(SoundEvents.HOGLIN_ANGRY, 1.0F, 0.7F);
+    }
+
+    private void stopIntimidating() {
+        if (this.isIntimidating()) {
+            this.entityData.set(INTIMIDATING, false);
+            // Only on a real standoff ending — this method is also the every-tick "nothing to do
+            // here" path, and playing the release on each of those would be a permanent twitch.
+            // Skipped while asleep: nothing to release from, the sleep clips own the body.
+            if (!this.isInSleepCycle()) {
+                this.startAction(ANIM_INTIMIDATE_OUT);
+            }
+        }
+        this.intimidationTicks = 0;
+        this.staringTicks = 0;
+    }
+
+    /** Back to square one: the beef, and the dice. */
+    private void forgetTrust() {
+        this.stopIntimidating();
+        this.setTame(false, true);
+        this.setOwnerReference(null);
+        this.level().broadcastEntityEvent(this, (byte) 6);   // smoke, the same "no" as a failed feed
+    }
+
+    /** Synced — safe to read from an animation play condition on either side. */
+    public boolean isIntimidating() {
+        return this.entityData.get(INTIMIDATING);
     }
 
     // ───────────────────────────────────────────────────── WATER ─────
@@ -478,7 +704,7 @@ public class HellHippoEntity extends GenderedSMOPAnimal
      *
      * <p><b>Without this the animal cannot rise in water at all</b>, and it took tracing both of
      * vanilla's ascent mechanisms to see why it has neither. A land mob climbs because its
-     * {@code MoveControl} calls {@code getJumpControl().jump()} ({@code MoveControl.java:104-111}),
+     * {@code MoveControl} calls {@code getJumpControl().jump()} ({@code MoveControl#tick}),
      * which raises {@code jumping}, which {@code aiStep} turns into {@code jumpInFluid}'s upward
      * nudge — but {@link DirectionalMoveControl} is horizontal-only and never requests a jump. A
      * swimming mob climbs because its move control drives Y straight at the waypoint; the shape and
@@ -551,8 +777,8 @@ public class HellHippoEntity extends GenderedSMOPAnimal
      * instant a toe touches a puddle, so a hippo walking through one block of water — walking, with
      * its feet on the ground, at its full land speed — played the swim clip. What actually matters is
      * how far up the body the water comes, and {@code getFluidHeight} is exactly that measurement:
-     * {@code Entity#updateFluidHeightAndDoFluidPushing} fills it with
-     * {@code max(fluidSurface - boundingBox.minY)}, in blocks above the feet.
+     * {@code EntityFluidInteraction} fills it with
+     * {@code max(fluidSurface - entityY)}, in blocks above the feet.
      *
      * <p>Taken as a fraction of the animal's own height rather than a flat number, so it survives a
      * change to the hitbox and lifts cleanly to {@code SMOPAnimal} the day the Nirasmosaurus needs
@@ -581,10 +807,23 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         this.entityData.set(SEAWEED, value);
     }
 
-    /** Shears strip the algae for 2 kelp. Everything else falls through to the base animal. */
+    /**
+     * Shears, then the saddle, then the trust ritual. Everything else falls through to the base
+     * animal, which is what leaves breeding and calf-feeding working.
+     *
+     * <p>The order matters: the saddle is tested before the trust ritual so that a saddle in hand is
+     * never mistaken for anything else, and the trust ritual stands down once the animal is tamed so
+     * that beef goes back to meaning "breed with me".
+     */
     @Override
     public @NotNull InteractionResult mobInteract(@NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
+        // First, and regardless of what is in hand — same order vanilla's chested mounts use. Crouching
+        // at a loaded pack animal means "let me at the bags", not "let me try this item on you".
+        if (player.isSecondaryUseActive() && this.hasChest() && this.isOwnedBy(player)) {
+            this.openCustomInventoryScreen(player);
+            return InteractionResult.SUCCESS;
+        }
         if (stack.is(Items.SHEARS) && this.hasSeaweed()) {
             if (this.level() instanceof ServerLevel serverLevel) {
                 this.setSeaweed(false);
@@ -596,19 +835,320 @@ public class HellHippoEntity extends GenderedSMOPAnimal
             }
             return InteractionResult.SUCCESS;
         }
+        if (stack.is(Items.SADDLE)) {
+            return this.trySaddle(player, stack);
+        }
+        if (stack.is(Items.CHEST) && !this.hasChest()) {
+            return this.tryChest(player, stack);
+        }
+        // Body armour has NO generic equip path, unlike the saddle: Item.Properties#horseArmor builds
+        // its Equippable without setEquipOnInteract, so vanilla's own horse equips barding by hand in
+        // its mobInteract too. Left to itself, right-clicking with it does nothing at all.
+        if (this.isEquippableInSlot(stack, EquipmentSlot.BODY) && !this.isWearingBodyArmor()) {
+            return this.tryBodyArmor(player, stack);
+        }
+        if (this.canBeOfferedTrustFood(stack)) {
+            return this.offerTrustFood(player, hand, stack);
+        }
         return super.mobInteract(player, hand);
+    }
+
+    // ───────────────────────────────────────────────────── TRUST ─────
+
+    /**
+     * Raw beef offered to a wild adult is a bid for its trust; anything else is not.
+     *
+     * <p><b>Calves are exempt on purpose</b>, which is a small departure from 1.20.1. Beef is also in
+     * {@link #FOOD_ITEMS}, so intercepting it for a calf would quietly cost the player vanilla's
+     * feed-to-grow-faster affordance in exchange for a bond they cannot act on anyway — the saddle
+     * needs an adult (see {@link #canUseSlot}). Carrots still grow a calf either way.
+     */
+    private boolean canBeOfferedTrustFood(ItemStack stack) {
+        return !this.isTame() && !this.isBaby() && stack.is(Items.BEEF);
+    }
+
+    /**
+     * One throw of the dice. Wins its trust on a {@value #TRUST_CHANCE_DENOMINATOR}, or eats the beef
+     * and stays wary.
+     *
+     * <p>The bond is vanilla's ownership, not a flag of this mob's own. 1.20.1 carried a synced
+     * {@code DATA_TRUSTING} boolean beside a {@code trustingPlayerUUID} it had to save and load by
+     * hand; {@link TamableAnimal} already has both, already synced and already persisted, and
+     * {@code TamableAnimal#canAttack} even refuses to attack its owner for free.
+     */
+    private InteractionResult offerTrustFood(Player player, InteractionHand hand, ItemStack stack) {
+        if (this.level().isClientSide()) {
+            // SUCCESS rather than CONSUME so the arm swings on the client that made the offer.
+            return InteractionResult.SUCCESS;
+        }
+        this.usePlayerItem(player, hand, stack);
+        if (this.getRandom().nextInt(TRUST_CHANCE_DENOMINATOR) == 0) {
+            this.tame(player);
+            this.level().broadcastEntityEvent(this, (byte) 7);   // hearts
+        } else {
+            this.level().broadcastEntityEvent(this, (byte) 6);   // smoke
+        }
+        return InteractionResult.SUCCESS;
+    }
+
+    // ───────────────────────────────────────────────────── SADDLE ─────
+
+    /**
+     * Saddling is a second ceremony on top of the first, and it is meant to be awkward: only while
+     * the animal is asleep, and only by the one it trusts. Putting it on wakes it.
+     *
+     * <p>1.20.1 built that window deliberately and it is the best idea the mob has, so it survives
+     * the port intact. What changed is only the plumbing: the saddle is real equipment in 26.1
+     * ({@link EquipmentSlot#SADDLE}), so vanilla owns its persistence, its render and its drop, and
+     * there is no {@code Saddleable} interface left to implement.
+     */
+    private InteractionResult trySaddle(Player player, ItemStack stack) {
+        if (this.level().isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        // isEquippableInSlot folds in canUseSlot below, so "already saddled", "still a calf" and
+        // "not tamed" are all covered without repeating them here.
+        if (!this.isKnockedOut() || !this.isOwnedBy(player) || !this.isEquippableInSlot(stack, EquipmentSlot.SADDLE)) {
+            // CONSUME and NOT FAIL, which is a trap worth spelling out: InteractionResult.Fail does
+            // not consume the action, so Player#interactOn carries on and calls
+            // itemStack.interactLivingEntity(...) — and a vanilla saddle is built with
+            // setEquipOnInteract(true), so that call would put it on regardless of everything tested
+            // above. Refusing has to consume, or the refusal is decorative.
+            return InteractionResult.CONSUME;
+        }
+        this.setItemSlot(EquipmentSlot.SADDLE, stack.consumeAndReturn(1, player));
+        this.guaranteeTackDrops();
+        // The negotiation is over: it stops squaring up, and the trust can no longer lapse.
+        this.stopIntimidating();
+        // Spends the potion early rather than leaving the animal knocked out with a saddle on.
+        // tickWeaknessSleep does the rest of the honours on the next tick.
+        this.removeEffect(MobEffects.WEAKNESS);
+        // Only a request: SleepGoal owns the cycle and will run the waking clip rather than snapping
+        // the animal upright. @see SMOPAnimal#hurtServer, which rouses it the same way.
+        this.sleepUrge().requestWake();
+        return InteractionResult.SUCCESS;
+    }
+
+    /**
+     * Knocked out by a potion, as opposed to merely having gone to bed.
+     *
+     * <p>Natural sleep does <b>not</b> open the saddling window, and that is the point of the whole
+     * chain: a hippo that dozes off at nightfall is still its own animal, and walking up to a
+     * sleeping one to help yourself would make the potion — and the 15-second standoff that forces
+     * you to find one — pointless. Only the forced sleep counts.
+     */
+    private boolean isKnockedOut() {
+        return this.isSleeping() && this.sleepUrge().isForced();
+    }
+
+    // ───────────────────────────────────────────────────── ARMOUR ─────
+
+    /**
+     * Straps the barding on. {@link #canUseSlot} has already insisted on a saddled adult, so all this
+     * adds is the ownership check and the drop guarantee.
+     */
+    private InteractionResult tryBodyArmor(Player player, ItemStack stack) {
+        if (this.level().isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        if (!this.isOwnedBy(player)) {
+            return InteractionResult.CONSUME;
+        }
+        this.setBodyArmorItem(stack.consumeAndReturn(1, player));
+        this.guaranteeTackDrops();
+        return InteractionResult.SUCCESS;
+    }
+
+    /**
+     * Makes the tack come back when the animal dies.
+     *
+     * <p><b>Without this it mostly does not.</b> Equipment leaves a mob through
+     * {@code Mob#dropCustomDeathLoot}, which rolls against {@code DropChances.DEFAULT} — <b>0.085</b>,
+     * an 8.5% chance — and additionally refuses unless a player landed the killing blow. Those are the
+     * right odds for armour a mob spawned wearing, and the wrong ones for a saddle somebody fitted by
+     * hand: losing it nine times in ten to a fall or a creeper is not a difficulty choice, it reads as
+     * a bug.
+     *
+     * <p>{@code setGuaranteedDrop} puts the chance at 2.0, which is also above the {@code isPreserved}
+     * line of 1.0 — so it clears the killed-by-a-player requirement at the same time.
+     */
+    private void guaranteeTackDrops() {
+        this.setGuaranteedDrop(EquipmentSlot.SADDLE);
+        this.setGuaranteedDrop(EquipmentSlot.BODY);
+    }
+
+    // ───────────────────────────────────────────────────── CHEST ─────
+
+    /**
+     * Panniers, which need a saddle already on. Awake is fine — unlike the saddle, this is not a
+     * negotiation, it is luggage on an animal that has already agreed.
+     */
+    private InteractionResult tryChest(Player player, ItemStack stack) {
+        if (this.level().isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        if (!this.isSaddled() || !this.isOwnedBy(player)) {
+            return InteractionResult.CONSUME;
+        }
+        this.setChest(true);
+        stack.consume(1, player);
+        this.level().playSound(null, this, SoundEvents.DONKEY_CHEST, SoundSource.NEUTRAL, 1.0F, 1.0F);
+        return InteractionResult.SUCCESS;
+    }
+
+    public boolean hasChest() {
+        return this.entityData.get(CHEST);
+    }
+
+    public void setChest(boolean value) {
+        this.entityData.set(CHEST, value);
+    }
+
+    // ───────────────────────────────────────────────────── INVENTORY ─────
+
+    /**
+     * How much the panniers hold. <b>27, where 1.20.1 had 15</b>, and the change is forced rather than
+     * chosen: that 15 came from {@code AbstractChestedHorse}'s five columns times three rows, and the
+     * horse's inventory screen is not reachable from here — {@code Player#openHorseInventory} is typed
+     * to {@code AbstractHorse}. Driving a plain {@link ChestMenu} instead means the sizes it offers
+     * with a custom container, which are three rows or six. Three is the closer of the two, and reads
+     * as exactly what the player put on the animal: one chest.
+     *
+     * <p>The legacy's 17 counted its saddle and armour slots. Those are real equipment slots in 26.1
+     * and live outside the container entirely, so this is 27 slots of actual storage.
+     */
+    private static final int INVENTORY_SIZE = 27;
+
+    /**
+     * Built on construction rather than when the chest goes on, so nothing ever has to null-check it.
+     * An unchested hippo simply has a container nobody can open.
+     */
+    private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE) {
+        /**
+         * Shuts the screen when the animal is no longer there to carry it. {@code SimpleContainer}
+         * answers true unconditionally, which would leave a player stocking the panniers of a hippo
+         * that has already died — the items would go into a container attached to nothing.
+         */
+        @Override
+        public boolean stillValid(@NotNull Player player) {
+            return HellHippoEntity.this.isAlive()
+                    && HellHippoEntity.this.hasChest()
+                    && player.isWithinEntityInteractionRange(HellHippoEntity.this, 4.0D);
+        }
+    };
+
+    /**
+     * Shift-right-click opens the panniers, for the owner only.
+     *
+     * <p>Not {@code ContainerEntity}, which the port spec named: that interface lives in
+     * {@code world.entity.vehicle} and is built for minecarts and boats — loot tables,
+     * {@code chestVehicleDestroyed}, {@code interactWithContainerVehicle}. Vanilla's own chested
+     * mounts do not use it either; they carry a {@code SimpleContainer} and implement
+     * {@link HasCustomInventoryScreen}, which is what this does.
+     */
+    @Override
+    public void openCustomInventoryScreen(@NotNull Player player) {
+        if (this.level().isClientSide() || !this.hasChest() || !this.isOwnedBy(player)) {
+            return;
+        }
+        player.openMenu(new SimpleMenuProvider(
+                (containerId, playerInventory, opener) -> ChestMenu.threeRows(containerId, playerInventory, this.inventory),
+                this.getDisplayName()));
+    }
+
+    /**
+     * Gives the tack back when it dies. The saddle and the armour are equipment, so vanilla already
+     * drops those; the chest is this mob's own flag and has to be handed back by hand.
+     */
+    @Override
+    protected void dropEquipment(@NotNull ServerLevel level) {
+        super.dropEquipment(level);
+        if (!this.hasChest()) {
+            return;
+        }
+        this.spawnAtLocation(level, new ItemStack(Items.CHEST));
+        // And everything in it. Cleared as it goes so a second call — or a corpse that lingers —
+        // cannot pay out twice.
+        for (int slot = 0; slot < this.inventory.getContainerSize(); slot++) {
+            ItemStack carried = this.inventory.removeItemNoUpdate(slot);
+            if (!carried.isEmpty()) {
+                this.spawnAtLocation(level, carried);
+            }
+        }
+    }
+
+    // ───────────────────────────────────────────────────── SADDLE ─────
+
+    /**
+     * The half of "may this animal be saddled" that does not depend on who is asking — the same split
+     * vanilla's horse makes. The other half (knocked out, and by its owner) lives in
+     * {@link #trySaddle}, which is the only place that knows the player.
+     *
+     * <p><b>This is not sufficient on its own.</b> The saddle item restricts itself to the
+     * {@code #minecraft:can_equip_saddle} entity type tag ({@code Equippable#saddle}), so the mob has
+     * to be added to it in a datapack or {@code isEquippableInSlot} refuses no matter what this
+     * returns — which is exactly why saddling did nothing at all before that tag existed.
+     */
+    @Override
+    public boolean canUseSlot(@NotNull EquipmentSlot slot) {
+        return switch (slot) {
+            case SADDLE -> this.isAlive() && !this.isBaby() && this.isTame();
+            // Barding goes over tack, never straight onto the animal — 1.20.1 gated it on the saddle
+            // and so does this. Saying so HERE rather than only in mobInteract is what matters:
+            // LivingEntity#canUseSlot answers true for everything by default, so without this a
+            // dispenser, or a right-click going through the item's own equip-on-interact path, would
+            // strap armour to a wild hippo that has never let anyone near it.
+            case BODY -> this.isAlive() && !this.isBaby() && this.isSaddled();
+            default -> super.canUseSlot(slot);
+        };
+    }
+
+    /** The saddle's own click, as the horse does it. */
+    @Override
+    protected @NotNull Holder<SoundEvent> getEquipSound(@NotNull EquipmentSlot slot, @NotNull ItemStack stack,
+                                                        @NotNull Equippable equippable) {
+        return slot == EquipmentSlot.SADDLE ? SoundEvents.HORSE_SADDLE : super.getEquipSound(slot, stack, equippable);
+    }
+
+    /**
+     * A tamed hippo will not bite the hand that fed it, nor anything else that hand owns.
+     *
+     * <p>{@code TamableAnimal#canAttack} already covers the owner, so what is added here is only the
+     * owner's other pets — the case that makes a saddled hippo safe to keep beside a wolf.
+     */
+    @Override
+    public boolean canAttack(@NotNull LivingEntity target) {
+        if (!super.canAttack(target)) {
+            return false;
+        }
+        LivingEntity owner = this.getOwner();
+        return owner == null || !(target instanceof TamableAnimal pet) || !pet.isOwnedBy(owner);
     }
 
     @Override
     protected void defineSynchedData(SynchedEntityData.@NotNull Builder builder) {
         super.defineSynchedData(builder);
         builder.define(SEAWEED, false);
+        builder.define(INTIMIDATING, false);
+        builder.define(CHEST, false);
     }
 
     @Override
     protected void addAdditionalSaveData(@NotNull ValueOutput output) {
         super.addAdditionalSaveData(output);
         output.putBoolean("Seaweed", this.hasSeaweed());
+        output.putBoolean("Chest", this.hasChest());
+        if (this.hasChest()) {
+            // Same shape vanilla's chested mounts write: a sparse list of slot/stack pairs rather
+            // than a fixed-length array, so empty panniers cost nothing on disk.
+            ValueOutput.TypedOutputList<ItemStackWithSlot> carried = output.list("Items", ItemStackWithSlot.CODEC);
+            for (int slot = 0; slot < this.inventory.getContainerSize(); slot++) {
+                ItemStack stack = this.inventory.getItem(slot);
+                if (!stack.isEmpty()) {
+                    carried.add(new ItemStackWithSlot(slot, stack));
+                }
+            }
+        }
         // Persisted alongside the flag so a shear block survives a reload — otherwise quitting and
         // rejoining would be a way to skip the cooldown.
         output.putInt("SeaweedTicks", this.seaweedTicks);
@@ -618,6 +1158,16 @@ public class HellHippoEntity extends GenderedSMOPAnimal
     protected void readAdditionalSaveData(@NotNull ValueInput input) {
         super.readAdditionalSaveData(input);
         this.setSeaweed(input.getBooleanOr("Seaweed", false));
+        this.setChest(input.getBooleanOr("Chest", false));
+        if (this.hasChest()) {
+            for (ItemStackWithSlot carried : input.listOrEmpty("Items", ItemStackWithSlot.CODEC)) {
+                // Guarded rather than trusted: a world saved when the panniers were bigger would
+                // otherwise index past the end of the container.
+                if (carried.isValidInContainer(this.inventory.getContainerSize())) {
+                    this.inventory.setItem(carried.slot(), carried.stack());
+                }
+            }
+        }
         this.seaweedTicks = input.getIntOr("SeaweedTicks", 0);
     }
 
@@ -700,6 +1250,21 @@ public class HellHippoEntity extends GenderedSMOPAnimal
                 Loop.PLAY_ONCE, 1, 1.5F);
         StandardAnimation shake = clip(ANIM_SHAKE, () -> HellHippoAnimations.shake, () -> HellHippoBabyAnimations.shake,
                 Loop.PLAY_ONCE, 1, 3.5F);
+        // The stare-down, in three pieces. It arrived from 1.20.1 as ONE 7.5-second clip and was
+        // registered that way at first, which looked wrong for a reason no amount of looping could
+        // fix: a 7.5-second clip covering a 15-second window has to restart, and the restart passes
+        // through the settle its own last second is made of — so the animal visibly relaxed out of
+        // the pose and snapped back into it, twice per standoff.
+        //
+        // Cutting it the way any looping action wants to be cut solves it outright. The entry and
+        // the release are the parts that must not repeat; the middle is the only part that should.
+        // Adult only: a calf never gets here, because the trust ritual refuses one.
+        StandardAnimation intimidateIn = adultClip(ANIM_INTIMIDATE_IN,
+                () -> HellHippoAnimations.intimidate_in, Loop.PLAY_ONCE, 1, 0.65F);
+        StandardAnimation intimidateLoop = adultClip(ANIM_INTIMIDATE_LOOP,
+                () -> HellHippoAnimations.intimidate_loop, Loop.REPEATING, 1, 2.0F);
+        StandardAnimation intimidateOut = adultClip(ANIM_INTIMIDATE_OUT,
+                () -> HellHippoAnimations.intimidate_out, Loop.PLAY_ONCE, 1, 0.95F);
 
         // The lunge AnimatableMeleeAttackGoal looks up by name, and what the HitWindow below is
         // applied to. Priority 0 so it wins over locomotion, which keeps running underneath.
@@ -760,12 +1325,30 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         preparingSleep.setNextAnimation("sleep");
 
         shake.setPlayCondition(a -> this.isPerforming(ANIM_SHAKE));
+        // Not a scripted action like the shake: this one follows a synced STATE, because the mob has
+        // to hold the pose for the whole 15-second window rather than play a gesture once. Priority 1
+        // so it sits over locomotion but under the bite.
+        // Same shape as the sleep chain above, and for the same reason: the two one-shots are started
+        // by hand (startAction, from startIntimidating/stopIntimidating) because the animator's
+        // auto-start only ever picks up REPEATING clips. Their conditions exist to CUT them — a
+        // standoff that ends mid-entry drops the clip instead of finishing it.
+        intimidateIn.setPlayCondition(a -> this.isPerforming(ANIM_INTIMIDATE_IN));
+        intimidateOut.setPlayCondition(a -> this.isPerforming(ANIM_INTIMIDATE_OUT));
+        // The loop is the one that auto-starts, and it must not do so until the entry has finished —
+        // hence the explicit exclusion rather than relying on the chain alone.
+        // Not while it is out cold either: the state survives the potion so the standoff can resume
+        // on waking, but a hippo lying down should be playing the sleep clip, not posturing.
+        intimidateLoop.setPlayCondition(a -> this.isIntimidating()
+                && !this.isInSleepCycle()
+                && !this.isPerforming(ANIM_INTIMIDATE_IN));
+        intimidateIn.setNextAnimation(ANIM_INTIMIDATE_LOOP);
 
         // Stops the rig's look-at from still tracking with a corpse's neck while the death clip runs.
         death.blockAdditive();
 
         this.animator().register(idle, walk, sprint, waterIdle, swim,
-                preparingSleep, sleep, awakening, shake, attack);
+                preparingSleep, sleep, awakening, shake,
+                intimidateIn, intimidateLoop, intimidateOut, attack);
         // registerDeath, not register: it also makes the clip non-interruptible and holds the corpse
         // in the world for its full length instead of vanilla's fixed 20 ticks. Priority 0 so it wins
         // over locomotion, which keeps running underneath.
@@ -841,6 +1424,26 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         calf.snapTo(this.getX() + (this.getRandom().nextDouble() - 0.5D) * 2.0D, this.getY(),
                 this.getZ() + (this.getRandom().nextDouble() - 0.5D) * 2.0D, this.getYRot(), 0.0F);
         level.addFreshEntity(calf);
+    }
+
+    /**
+     * Ordinary animal spawn rules — grass-type ground under it, bright enough — same as the
+     * Tangoftero's and the Kriftognathus's.
+     *
+     * <p>Registering this at all is what stops the mob spawning in nonsense places: without an entry
+     * in {@code RegisterSpawnPlacementsEvent}, {@code SpawnPlacements#getPlacementType} falls back to
+     * {@code NO_RESTRICTIONS} and {@code checkSpawnRules} returns true unconditionally
+     * ({@code SpawnPlacements#getPlacementType} y {@code #checkSpawnRules}), so the biome entry alone would put hippos wherever the
+     * spawner happened to pick.
+     *
+     * <p>Deliberately not loosened for the mangrove swamp. Its floor is mud, which is not in
+     * {@code #minecraft:animals_spawnable_on}, so hippos will only appear on the grass patches that
+     * biome does have. That makes them rarer there than in an open savanna, which is the right
+     * outcome for an animal this size — it should not be crawling out of every mudflat.
+     */
+    public static boolean checkHellHippoSpawnRules(EntityType<HellHippoEntity> type, ServerLevelAccessor level,
+                                                   EntitySpawnReason reason, BlockPos pos, RandomSource random) {
+        return checkAnimalSpawnRules(type, level, reason, pos, random);
     }
 
     @Override

@@ -3,7 +3,15 @@ package net.darkblade.smop.item;
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.block.SMOPBlocks;
 import net.darkblade.smop.entity.SMOPEntities;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.equipment.Equippable;
 import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
@@ -102,6 +110,39 @@ public final class SMOPItems {
     public static final java.util.List<Item> MUD_DIG_DROPS = java.util.List.of(Items.CLAY_BALL);
     public static final java.util.List<Item> DIRT_DIG_DROPS = java.util.List.of(Items.POTATO, Items.CARROT);
 
+    // ───────────────────────────────────────────────────── ARMOUR ─────
+
+    /**
+     * Barding for a saddled Hell Hippo. Worn in {@link EquipmentSlot#BODY}, like horse armour.
+     *
+     * <p><b>The +5 armour is a data component, not code.</b> 1.20.1 carried a synced {@code DATA_ARMOR}
+     * flag beside an {@code updateArmorBonus()} that added and removed an {@code AttributeModifier} by
+     * hand, watching the inventory slot to know when — about seventy lines. In 26.1 the modifier rides
+     * on the item and vanilla applies and reverts it with the equipment, so the number below is the
+     * whole of it. Same value the legacy used.
+     *
+     * <p>{@code setAllowedEntities} restricts it to this one mob, which is also what stops it being
+     * strapped to a horse. Resolving {@code SMOPEntities} inside the properties lambda is safe for the
+     * same reason the spawn eggs below can do it: the lambda runs while the item registry is being
+     * filled, by which point entity types exist.
+     *
+     * <p>{@code setDamageOnHurt(false)} matches horse armour — barding absorbs without wearing out.
+     */
+    public static final DeferredItem<Item> HELL_HIPPO_ARMOR =
+            ITEMS.registerItem("hellhippo_armor", props -> new Item(props
+                    .stacksTo(1)
+                    .attributes(ItemAttributeModifiers.builder()
+                            .add(Attributes.ARMOR,
+                                    new AttributeModifier(SMOP.id("armor.hell_hippo"),
+                                            5.0D, AttributeModifier.Operation.ADD_VALUE),
+                                    EquipmentSlotGroup.BODY)
+                            .build())
+                    .component(DataComponents.EQUIPPABLE, Equippable.builder(EquipmentSlot.BODY)
+                            .setEquipSound(SoundEvents.HORSE_ARMOR)
+                            .setAllowedEntities(SMOPEntities.HELL_HIPPO.get())
+                            .setDamageOnHurt(false)
+                            .build())));
+
     // ───────────────────────────────────────────────────── SPAWN EGGS ─────
 
     /**
@@ -145,6 +186,9 @@ public final class SMOPItems {
                         output.accept(TANGO_LEG.get());
                         output.accept(COOKED_TANGO_LEG.get());
                         output.accept(KRIFTO_STEW.get());
+
+                        // ARMOUR
+                        output.accept(HELL_HIPPO_ARMOR.get());
 
                         // MISC / MATERIALS
                         output.accept(NIRASMO_BEAK.get());

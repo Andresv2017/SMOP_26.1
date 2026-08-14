@@ -16,8 +16,8 @@ import java.util.List;
 /**
  * The wild-taming ritual: a krifto that finds rabbit meat a player dropped on the ground walks over
  * to it — landing first if it was flying, since it never eats mid-air — and bites it with the
- * {@code eating} clip. {@link KriftognathusEntity#incrementFeedProgress()} feedings later (rolled 3
- * or 4 on the first bite) it tames to whoever threw the last one and plays {@code tamed}.
+ * {@code eating} clip. A {@link net.darkblade.smop.entity.tame.TameProgress} number of feedings later
+ * (rolled 3 or 4 on the first bite) it tames to whoever threw the last one and plays {@code tamed}.
  *
  * <p>Replaces the old right-click-with-rabbit tame roll entirely; see
  * {@code KriftognathusEntity#mobInteract}. Progress is never lost on interruption — only the current
@@ -211,10 +211,9 @@ public class TameFeedGoal extends Goal {
         ((ServerLevel) this.mob.level()).sendParticles(ParticleTypes.HAPPY_VILLAGER,
                 this.mob.getX(), this.mob.getY(0.5D), this.mob.getZ(), 4, 0.3D, 0.3D, 0.3D, 0.0D);
 
-        int progress = this.mob.incrementFeedProgress();
-        if (progress >= this.mob.getFeedGoal() && thrower instanceof Player player) {
-            this.mob.tame(player);
-            this.mob.level().broadcastEntityEvent(this.mob, (byte) 7);
+        // The count, the target and who ends up owning it all live in TameProgress; what stays here
+        // is the krifto's own reaction to being tamed, which is nobody else's business.
+        if (this.mob.tameProgress().feed(thrower)) {
             this.mob.startAction(KriftognathusEntity.ANIM_TAMED);
         }
 
