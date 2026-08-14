@@ -1,8 +1,17 @@
 package net.darkblade.smop.client.hellhippo;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import net.darkblade.deluxelib.anim.Animatable;
+import net.darkblade.deluxelib.client.anim.HumanoidPoseApplier;
+import net.darkblade.deluxelib.client.render.RiderPoseHandler;
+import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.world.entity.LivingEntity;
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.renderer.entity.AgeableMobRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
@@ -15,12 +24,13 @@ import org.jetbrains.annotations.NotNull;
  * <p>{@link AgeableMobRenderer} handles the adult/calf model swap, which matters more here than
  * usual — the two meshes have different skeletons, and a clip baked against the wrong one throws.
  *
- * <p><b>Phase 1a</b> resolves only the plain coats. The saddle, armour, chest and seaweed variants
- * exist as textures already but are selected on state this mob does not carry yet; they get wired up
- * with the mechanics that produce them, in phases 2 and 3.
+ * <p>Resolves all fifteen coats — sex, seaweed, and every legal combination of saddle, barding and
+ * panniers — and, as a {@code RiderPoseHandler}, takes over how a rider is posed and placed on its
+ * back.
  */
 public class HellHippoRenderer
-        extends AgeableMobRenderer<HellHippoEntity, HellHippoRenderState, EntityModel<? super HellHippoRenderState>> {
+        extends AgeableMobRenderer<HellHippoEntity, HellHippoRenderState, EntityModel<? super HellHippoRenderState>>
+        implements RiderPoseHandler {
 
     private static final Identifier BABY = SMOP.id("textures/entity/hell_hippo/baby_hell_hippo.png");
 
@@ -117,5 +127,78 @@ public class HellHippoRenderer
             suffix.append(CHEST);
         }
         return coat(sex, suffix.toString());
+    }
+
+    // ───────────────────────────────────────────────────── RIDER ─────
+    //
+    // No registration step: RiderRenderEvents finds this by instanceof on the vehicle's renderer, and
+    // attaches a RiderPassengerLayer that draws the rider inside this renderer's own pass. Vanilla's
+    // default "stand on top facing forward" placement is skipped entirely.
+
+    @Override
+    public <S extends HumanoidRenderState> void applyRiderPose(@NotNull LivingEntity vehicle,
+                                                               @NotNull HumanoidModel<S> model,
+                                                               @NotNull S riderState) {
+        if (isOwnFirstPersonView(vehicle)) {
+            // Un-apply rather than merely skip: the applier tracks the last pose per model instance,
+            // and models are shared across every humanoid a renderer draws. Returning without
+            // clearing would leave the seated pose stuck on whatever it touches next.
+            HumanoidPoseApplier.clearIfNeeded(model);
+            return;
+        }
+        HumanoidPoseApplier.applyStatic(HellHippoRiderPose.SEATED, model);
+    }
+
+    /**
+     * Whether this pose is about to be applied to the camera holder's own hands.
+     *
+     * <p>The event behind {@code applyRiderPose} fires at the tail of <em>every</em>
+     * {@code HumanoidModel#setupAnim}, and the first-person hand is drawn through that same call — so
+     * without this the seated arm rotation lands on the held-item view and the player's own hands end
+     * up shoved across the screen. In first person the body is not drawn at all, so there is nothing
+     * else lost by standing down.
+     *
+     * <p>Checked against the vehicle's controller rather than the render state because the state
+     * carries no identity: other players riding their own hippos still get posed normally.
+     */
+    private static boolean isOwnFirstPersonView(LivingEntity vehicle) {
+        Minecraft client = Minecraft.getInstance();
+        return client.options.getCameraType().isFirstPerson()
+                && vehicle.getControllingPassenger() == client.player;
+    }
+
+    /** Every humanoid that gets on. A hippo takes one rider and it is always a player. */
+    @Override
+    public <S extends HumanoidRenderState> boolean canApplyTo(@NotNull LivingEntity vehicle,
+                                                              @NotNull S riderState) {
+        return true;
+    }
+
+    /**
+     * Walks the animal's own bone chain to its back, so the seat follows the body wherever the
+     * animation puts it — including while it is swimming, sinking or rearing up mid-intimidation.
+     *
+     * <p>That is the reason to go through the bones rather than translate a fixed amount from the
+     * entity position: a constant offset is only correct while the mob stands still.
+     *
+     * <p>Seat frame after the walk is the model's, so <b>+Y is DOWN</b> and +Z is toward the tail —
+     * which is why the height below is negative. The numbers are eyeballed against the saddle
+     * texture; {@code /riderpose} tunes them live with the numpad and prints the result to paste back.
+     */
+    @Override
+    public void applyRiderTransform(@NotNull LivingEntityRenderState vehicleState, @NotNull PoseStack poseStack) {
+        if (!(this.getModel() instanceof HellHippoModel model)) {
+            // The calf mesh has a different skeleton and no saddle — nothing to sit on.
+            return;
+        }
+        model.root.translateAndRotate(poseStack);
+        model.body.translateAndRotate(poseStack);
+        model.torso.translateAndRotate(poseStack);
+        // Dialled in with /riderpose. The tuner reports its own transform as an addition on top of
+        // this method, and two translations with no rotation between them simply sum — so its
+        // -0.150 is folded into the height here rather than left as a second call. The 5° nose-down
+        // is what makes the rider lean into the animal instead of sitting bolt upright on it.
+        poseStack.translate(0.0F, -1.50F, 0.35F);
+        poseStack.mulPose(Axis.XP.rotationDegrees(-5.0F));
     }
 }

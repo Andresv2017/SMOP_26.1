@@ -216,7 +216,11 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
         }
     }
 
-    /** Server-side sample. Override for mobs whose "moving" means something else (swimming, flying). */
+    /**
+     * Server-side sample. Override for mobs whose "moving" means something else (swimming, flying) —
+     * or that can be <em>ridden</em>, where neither this nor the position difference works and the
+     * answer has to come from the rider's input. See {@code HellHippoEntity#isMovingNow}.
+     */
     protected boolean isMovingNow() {
         return this.getDeltaMovement().horizontalDistanceSqr() > 1.0E-4D;
     }

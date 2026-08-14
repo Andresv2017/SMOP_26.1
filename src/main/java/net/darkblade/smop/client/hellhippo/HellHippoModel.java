@@ -41,9 +41,21 @@ public class HellHippoModel extends EntityModel<DeluxeEntityRenderState> {
 
     public final ModelPart neck;
 
+    /**
+     * The chain down to the animal's back, exposed so the renderer can walk it to the saddle when it
+     * places a rider — see {@code HellHippoRenderer#applyRiderTransform}. Nothing else needs them,
+     * which is why only these three are kept.
+     */
+    public final ModelPart root;
+    public final ModelPart body;
+    public final ModelPart torso;
+
     public HellHippoModel(ModelPart root) {
         super(root);
-        this.neck = root.getChild("Hipopotamo_Infernal").getChild("body").getChild("neck");
+        this.root = root.getChild("Hipopotamo_Infernal");
+        this.body = this.root.getChild("body");
+        this.torso = this.body.getChild("torso");
+        this.neck = this.body.getChild("neck");
     }
 
     @Override

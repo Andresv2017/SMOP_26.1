@@ -16,6 +16,13 @@ import net.darkblade.smop.entity.ai.goal.IdleAnimationGoal;
 import net.darkblade.smop.entity.ai.goal.SMOPFollowParentGoal;
 import net.darkblade.smop.entity.ai.goal.SMOPRandomStrollGoal;
 import net.darkblade.smop.effect.SMOPEffects;
+import net.darkblade.smop.entity.RiderControllable;
+import net.darkblade.smop.entity.rider.RiderAbility;
+import net.darkblade.smop.entity.rider.RiderSteering;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.BossEvent;
+import net.minecraft.world.phys.Vec2;
 import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -31,6 +38,8 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.AgeableMob;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -105,7 +114,7 @@ import java.util.function.Supplier;
  * covers. The Nirasmosaurus is rideable too, so that work is used twice.
  */
 public class HellHippoEntity extends GenderedSMOPAnimal
-        implements ISleepThreatEvaluator, ISleepAwareness, HasCustomInventoryScreen {
+        implements ISleepThreatEvaluator, ISleepAwareness, HasCustomInventoryScreen, RiderControllable {
 
     /** Tempts and breeds. Carrot and beef, as in 1.20.1. */
     private static final Ingredient FOOD_ITEMS = Ingredient.of(Items.CARROT, Items.BEEF);
@@ -162,6 +171,13 @@ public class HellHippoEntity extends GenderedSMOPAnimal
     private int staringTicks;
 
     /**
+     * Which kind of posturing is running: the pre-saddle standoff, where the clock running out costs
+     * the player its trust, or the rider's fear pulse, where it is only for show. Server-only, since
+     * the clips do not care which it is.
+     */
+    private boolean standoff;
+
+    /**
      * What a wild hippo hunts, straight from 1.20.1. A {@code TargetingConditions.Selector} rather
      * than a {@code Predicate}: 26.1 hands the selector the level as well as the candidate.
      */
@@ -206,6 +222,9 @@ public class HellHippoEntity extends GenderedSMOPAnimal
      * <p>A look number: adjust it against the render, not by arguing about it.
      */
     private static final double FOLLOW_PARENT_DISTANCE = 5.0D;
+
+    /** The lunge. Shared by the melee goal and by the rider's R. @see #registerAnimations() */
+    private static final String ANIM_ATTACK = "attack";
 
     /** The idle gesture: a full-body shake. @see #registerGoals() */
     private static final String ANIM_SHAKE = "shake";
@@ -367,7 +386,7 @@ public class HellHippoEntity extends GenderedSMOPAnimal
                 // itself to one check per 20 ticks (MeleeAttackGoal.java:35), so re-engaging after
                 // any interruption already costs up to a second before this goal is even asked.
                 .cooldown(18)
-                .onAttack((target, animator) -> animator.play(animator.getByName("attack"))));
+                .onAttack((target, animator) -> animator.play(animator.getByName(ANIM_ATTACK))));
         this.goalSelector.addGoal(2, new BreedGoal(this, 1.15D));
         this.goalSelector.addGoal(3, new TemptGoal(this, 1.2D, FOOD_ITEMS, false));
         // Above the strolls so that stepping onto dry land takes precedence over wandering off still
@@ -451,6 +470,10 @@ public class HellHippoEntity extends GenderedSMOPAnimal
             this.tickSeaweed();
             this.tickWeaknessSleep();
             this.tickIntimidation();
+            this.tickRiddenState();
+            Player rider = RiderAbility.controllerOf(this);
+            this.fearPulse.tick(rider);
+            this.mountedAttack.tick(rider);
         }
     }
 
@@ -504,10 +527,6 @@ public class HellHippoEntity extends GenderedSMOPAnimal
      * reads as the mob randomly untaming itself.
      */
     private void tickIntimidation() {
-        if (!this.isTame() || this.isSaddled()) {
-            this.stopIntimidating();
-            return;
-        }
         if (this.isIntimidating()) {
             // Out cold, the whole display is suspended: the clock stops, it does not posture, and it
             // certainly does not frighten anyone. That freeze IS the reprieve the potion buys — the
@@ -519,20 +538,31 @@ public class HellHippoEntity extends GenderedSMOPAnimal
             // the owner being present would mean logging out reset it, and the whole point is that
             // the window is not renewable.
             if (--this.intimidationTicks <= 0) {
-                this.forgetTrust();
+                boolean wasStandoff = this.standoff;
+                this.stopIntimidating();
+                if (wasStandoff) {
+                    this.forgetTrust();
+                }
                 return;
             }
-            if (this.getOwner() instanceof Player watcher) {
+            // Only the standoff hijacks the body and punishes staring. During a rider's pulse the
+            // player is steering, and wrenching the mount round to face them would fight the wheel.
+            if (this.standoff && this.getOwner() instanceof Player watcher) {
                 this.faceIntimidationTarget(watcher);
                 this.tickStare(watcher);
             }
+            return;
+        }
+        // Only the pre-saddle standoff ever starts by itself. The rider's pulse is asked for.
+        if (!this.isTame() || this.isSaddled()) {
             return;
         }
         // Only the START needs them in the room.
         if (this.getOwner() instanceof Player player
                 && this.distanceTo(player) < INTIMIDATION_RADIUS
                 && this.hasLineOfSight(player)) {
-            this.startIntimidating();
+            this.startIntimidating(INTIMIDATION_TICKS, true);
+            this.playSound(SoundEvents.HOGLIN_ANGRY, 1.0F, 0.7F);
         }
     }
 
@@ -577,15 +607,26 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         return super.isMovementLocked() || this.isIntimidating();
     }
 
-    private void startIntimidating() {
+    /**
+     * Squares up for {@code ticks}, running the whole {@code in → loop → out} clip chain.
+     *
+     * <p>Shared by the two things that make this animal posture, which look identical and mean
+     * different things: the pre-saddle standoff, where running out of time costs the player its
+     * trust, and the rider's fear pulse, where it is pure display. {@code standoff} is which.
+     *
+     * <p>Going through here rather than firing the entry clip on its own is what fixed the pulse
+     * looking like a twitch: {@code intimidate_in} is 0.65 seconds, and the loop that should follow it
+     * is gated on this very flag — so a pulse that only called {@code startAction} played the entry
+     * and stopped dead.
+     */
+    private void startIntimidating(int ticks, boolean standoff) {
         this.entityData.set(INTIMIDATING, true);
-        this.intimidationTicks = INTIMIDATION_TICKS;
+        this.intimidationTicks = ticks;
         this.staringTicks = 0;
+        this.standoff = standoff;
         // Started by hand because the animator only auto-starts REPEATING clips; this one chains
         // into the loop on its own once it finishes. @see #registerAnimations()
         this.startAction(ANIM_INTIMIDATE_IN);
-        // The only audible warning that a clock is running, now that the chat lines are gone.
-        this.playSound(SoundEvents.HOGLIN_ANGRY, 1.0F, 0.7F);
     }
 
     private void stopIntimidating() {
@@ -850,6 +891,12 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         if (this.canBeOfferedTrustFood(stack)) {
             return this.offerTrustFood(player, hand, stack);
         }
+        // Last, and only with nothing else to say: an empty hand on a saddled hippo means "get on".
+        // Anything held falls through to the base animal instead, so feeding a tamed one still breeds
+        // it rather than silently mounting.
+        if (stack.isEmpty() && this.isSaddled() && this.isOwnedBy(player)) {
+            return this.tryRide(player);
+        }
         return super.mobInteract(player, hand);
     }
 
@@ -939,6 +986,228 @@ public class HellHippoEntity extends GenderedSMOPAnimal
      */
     private boolean isKnockedOut() {
         return this.isSleeping() && this.sleepUrge().isForced();
+    }
+
+    // ───────────────────────────────────────────────────── RIDING ─────
+
+    /** Radius of the intimidation pulse, and how long the fear it leaves lasts. From 1.20.1. */
+    private static final double FEAR_PULSE_RADIUS = 10.0D;
+    private static final int FEAR_PULSE_DURATION_TICKS = 60;
+    private static final int FEAR_COOLDOWN_TICKS = 300;
+    /** How long it holds the pose while pulsing. 1.20.1 used the same 60. */
+    private static final int FEAR_POSTURE_TICKS = 60;
+
+    /** How much faster it goes with the rider holding sprint. */
+    private static final float RIDDEN_SPRINT_MULTIPLIER = 1.6F;
+
+    /** What the rider's bite costs to throw. Its reach and damage are the clip's, not this file's. */
+    private static final int MOUNTED_ATTACK_COOLDOWN_TICKS = 60;
+
+    private final RiderAbility fearPulse =
+            new RiderAbility(this, "Fear", FEAR_COOLDOWN_TICKS, BossEvent.BossBarColor.PURPLE);
+
+    private final RiderAbility mountedAttack =
+            new RiderAbility(this, "Charge", MOUNTED_ATTACK_COOLDOWN_TICKS, BossEvent.BossBarColor.RED);
+
+    /**
+     * Only its owner rides it, and only once it is tack. The saddle already implies tamed — see
+     * {@link #canUseSlot} — so the ownership test is what stops somebody else climbing onto a hippo
+     * that is saddled but not theirs.
+     */
+    @Override
+    public @Nullable LivingEntity getControllingPassenger() {
+        return this.isSaddled() && this.getFirstPassenger() instanceof Player rider && this.isOwnedBy(rider)
+                ? rider
+                : super.getControllingPassenger();
+    }
+
+    @Override
+    protected @NotNull Vec3 getRiddenInput(@NotNull Player controller, @NotNull Vec3 selfInput) {
+        return RiderSteering.riddenInput(controller);
+    }
+
+    @Override
+    protected void tickRidden(@NotNull Player controller, @NotNull Vec3 riddenInput) {
+        super.tickRidden(controller, riddenInput);
+        Vec2 rotation = RiderSteering.riddenRotation(controller);
+        this.setRot(rotation.y, rotation.x);
+        this.yRotO = this.yBodyRot = this.yHeadRot = this.getYRot();
+    }
+
+    @Override
+    protected float getRiddenSpeed(@NotNull Player controller) {
+        float base = (float) this.getAttributeValue(Attributes.MOVEMENT_SPEED);
+        return this.isSprinting() ? base * RIDDEN_SPRINT_MULTIPLIER : base;
+    }
+
+    /**
+     * Where the rider logically sits — the camera, their hitbox, and where they land on dismount.
+     *
+     * <p><b>Not the same thing as where they are drawn.</b> The render seat is walked down the model's
+     * own bone chain in {@code HellHippoRenderer#applyRiderTransform}, so it follows the body through
+     * every clip. This one cannot: it is server-side geometry and has to be a plain offset. The two
+     * only need to agree closely enough that the camera sits inside the drawn rider, which on a body
+     * 2.5 tall means somewhere around the shoulders.
+     *
+     * <p>Vanilla's default would put them at {@code height * 0.75}, which on this animal is buried in
+     * its back.
+     */
+    @Override
+    protected @NotNull Vec3 getPassengerAttachmentPoint(@NotNull Entity passenger,
+                                                        @NotNull EntityDimensions dimensions, float scale) {
+        return new Vec3(0.0D, dimensions.height() * 0.62D * scale, -0.15D * scale);
+    }
+
+    /**
+     * Mirrors the rider's control keys onto the mount, server-side.
+     *
+     * <p><b>Why the input has to come from {@code getLastClientInput()}</b> and not from
+     * {@code controller.xxa}/{@code zza}, which is what vanilla's horse reads: a mount carrying a
+     * player is client-authoritative, so the server never simulates its movement and never fills those
+     * fields. {@code ServerGamePacketListenerImpl#handlePlayerInput} stores the whole {@code Input}
+     * record and forwards exactly one thing out of it — {@code setShiftKeyDown}. Everything else,
+     * including which way the rider is pushing and whether they are sprinting, is only readable there.
+     *
+     * <p>Sprint is mirrored onto the mob's own {@code isSprinting()} rather than a flag of our own,
+     * because that one is already a synced shared flag — so the animation condition can read it on
+     * both sides for free, which is the whole requirement for a play condition.
+     */
+    private void tickRiddenState() {
+        if (this.getControllingPassenger() instanceof ServerPlayer rider) {
+            this.setSprinting(rider.getLastClientInput().sprint());
+        } else if (this.isSprinting()) {
+            this.setSprinting(false);
+        }
+    }
+
+    /**
+     * While a player is driving, "moving" is whatever they are asking for.
+     *
+     * <p>The inherited sample cannot work here for the same reason as above: the server is handed the
+     * mount's position rather than simulating it, and {@code LivingEntity#travelRidden} sets the delta
+     * to {@code Vec3.ZERO} outright on that side. Reading either the delta or the position difference
+     * left a ridden hippo reporting that it was standing still, so it never left its idle clip — and
+     * that in turn is what made the intimidation gesture drop back to <em>idle</em> instead of
+     * <em>walk</em> when it ended.
+     */
+    @Override
+    protected boolean isMovingNow() {
+        if (this.getControllingPassenger() instanceof ServerPlayer rider) {
+            Input input = rider.getLastClientInput();
+            return input.forward() || input.backward() || input.left() || input.right();
+        }
+        return super.isMovingNow();
+    }
+
+    /** Running, whether because it is angry or because its rider is holding sprint. */
+    private boolean isRunning() {
+        return this.isAggressive() || this.isSprinting();
+    }
+
+    /**
+     * Takes the cooldown bars off the rider when the animal stops existing — died, unloaded, or was
+     * discarded by a command.
+     *
+     * <p>A {@link net.minecraft.server.level.ServerBossEvent} is not attached to the entity in any
+     * way the game cleans up for you: it lives on the players it was added to. Without this, killing
+     * a hippo mid-cooldown leaves its rider staring at a sliver of bar that nothing can ever remove.
+     */
+    @Override
+    public void remove(@NotNull RemovalReason reason) {
+        this.fearPulse.hide();
+        this.mountedAttack.hide();
+        super.remove(reason);
+    }
+
+    /** Mounting is the plain right-click, once everything else in {@code mobInteract} has passed. */
+    private InteractionResult tryRide(Player player) {
+        if (this.level().isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        if (!this.isSaddled() || !this.isOwnedBy(player) || this.isVehicle() || this.isInSleepCycle()) {
+            return InteractionResult.CONSUME;
+        }
+        player.startRiding(this);
+        return InteractionResult.SUCCESS;
+    }
+
+    // ───────────────────────────────────────────────────── RIDER ACTIONS ─────
+
+    @Override
+    public void onRiderAction(@NotNull ServerPlayer rider, RiderControllable.@NotNull RiderAction action) {
+        // The packet already guarantees the sender is riding THIS mount, but not that they are the
+        // one steering it — a passenger on a hippo that is not theirs must not fire its abilities.
+        if (this.getControllingPassenger() != rider) {
+            return;
+        }
+        switch (action) {
+            case FEAR -> this.releaseFearPulse();
+            case ATTACK -> this.strikeFromSaddle();
+            case OPEN_INVENTORY -> this.openCustomInventoryScreen(rider);
+            // Diving belongs to the Nirasmosaurus. A hippo already walks the seabed on its own.
+            default -> { }
+        }
+    }
+
+    /**
+     * Everything alive nearby gets a face full of {@code smop:fear} — except the people and animals
+     * that are with it.
+     *
+     * <p>The three exclusions are 1.20.1's, and each earns its place: the rider (obviously), other
+     * hell hippos (a herd that panics itself is not intimidating), and anything the rider owns — the
+     * pulse should not scatter your own wolves.
+     */
+    private void releaseFearPulse() {
+        if (!this.fearPulse.tryUse()) {
+            return;
+        }
+        for (LivingEntity victim : this.level().getEntitiesOfClass(LivingEntity.class,
+                this.getBoundingBox().inflate(FEAR_PULSE_RADIUS), this::isAfraidOfMe)) {
+            victim.addEffect(new MobEffectInstance(SMOPEffects.FEAR, FEAR_PULSE_DURATION_TICKS, 0));
+        }
+        // Posture for the whole pulse rather than flashing the entry clip — see startIntimidating.
+        // Movement locks with it, which is the price of the ability and 1.20.1 charged it too.
+        this.startIntimidating(FEAR_POSTURE_TICKS, false);
+        this.playSound(SoundEvents.HOGLIN_ANGRY, 1.5F, 0.6F);
+    }
+
+    /** Everyone the pulse and the strike are allowed to touch. */
+    private boolean isAfraidOfMe(LivingEntity candidate) {
+        if (candidate == this || candidate instanceof HellHippoEntity) {
+            return false;
+        }
+        LivingEntity owner = this.getOwner();
+        if (candidate == owner) {
+            return false;
+        }
+        return owner == null || !(candidate instanceof TamableAnimal pet) || !pet.isOwnedBy(owner);
+    }
+
+    /**
+     * The rider asks for the bite the animal already has.
+     *
+     * <p><b>It does not aim, choose a target, or work out damage</b>, and earlier versions of this
+     * doing all three by hand was the mistake. The {@code attack} clip already carries a
+     * {@link HitWindow} — a box swept on the frames the jaws close, with the reach, the damage, the
+     * knockback and the exclusions all declared in {@link #registerAnimations()}. Playing the clip
+     * fires it. Anything this method computed separately would be a second, quietly divergent copy of
+     * numbers that already exist a hundred lines up.
+     *
+     * <p>Aim comes for free too: the window is anchored off body yaw, and {@code tickRidden} has
+     * already pointed the body wherever the rider's camera is. Nothing has to stand in front of
+     * anything — the bite sweeps its box and catches whatever is in it, exactly as it does when the
+     * animal decides to bite on its own.
+     *
+     * <p>Played through the animator rather than {@code startAction} for the same reason
+     * {@code AnimatableMeleeAttackGoal} does: a scripted action would raise the movement lock and take
+     * the wheel off the rider for the length of the lunge.
+     */
+    private void strikeFromSaddle() {
+        if (!this.mountedAttack.tryUse()) {
+            return;
+        }
+        this.animator().play(this.animator().getByName(ANIM_ATTACK));
+        this.playSound(SoundEvents.HOGLIN_ATTACK, 1.0F, 1.0F);
     }
 
     // ───────────────────────────────────────────────────── ARMOUR ─────
@@ -1138,6 +1407,8 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         super.addAdditionalSaveData(output);
         output.putBoolean("Seaweed", this.hasSeaweed());
         output.putBoolean("Chest", this.hasChest());
+        this.fearPulse.save(output, "FearCooldown");
+        this.mountedAttack.save(output, "AttackCooldown");
         if (this.hasChest()) {
             // Same shape vanilla's chested mounts write: a sparse list of slot/stack pairs rather
             // than a fixed-length array, so empty panniers cost nothing on disk.
@@ -1159,6 +1430,8 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         super.readAdditionalSaveData(input);
         this.setSeaweed(input.getBooleanOr("Seaweed", false));
         this.setChest(input.getBooleanOr("Chest", false));
+        this.fearPulse.load(input, "FearCooldown");
+        this.mountedAttack.load(input, "AttackCooldown");
         if (this.hasChest()) {
             for (ItemStackWithSlot carried : input.listOrEmpty("Items", ItemStackWithSlot.CODEC)) {
                 // Guarded rather than trusted: a world saved when the panniers were bigger would
@@ -1268,7 +1541,7 @@ public class HellHippoEntity extends GenderedSMOPAnimal
 
         // The lunge AnimatableMeleeAttackGoal looks up by name, and what the HitWindow below is
         // applied to. Priority 0 so it wins over locomotion, which keeps running underneath.
-        StandardAnimation attack = clip("attack", () -> HellHippoAnimations.attack, () -> HellHippoBabyAnimations.attack,
+        StandardAnimation attack = clip(ANIM_ATTACK, () -> HellHippoAnimations.attack, () -> HellHippoBabyAnimations.attack,
                 Loop.PLAY_ONCE, 0, ATTACK_SECONDS);
 
         // The damage is here, not in the goal: the goal only decides WHEN to commit, and the window
@@ -1297,16 +1570,19 @@ public class HellHippoEntity extends GenderedSMOPAnimal
                 // A wide bite from a body this size would otherwise maul any hippo standing nearby,
                 // including the calf beside its mother. Same exclusion the Krifto carries, and for
                 // the same reason: it still allows hitting one that IS the current target.
-                .filter(target -> target == this.getTarget() || !(target instanceof HellHippoEntity))
+                .filter(target -> !this.hasPassenger(target)
+                        && (target == this.getTarget() || !(target instanceof HellHippoEntity)))
                 .applyTo(attack);
 
         // Exactly one of these holds at any moment: deep enough for the water set or not, moving or
         // not. Both ages now have their own walk, so the split is purely by speed.
         idle.setPlayCondition(a -> this.canPlayLocomotion() && !this.isSwimDeep() && !this.isMoving());
+        // isRunning(), not isAggressive(): a mount whose rider is holding sprint is running too, and
+        // that flag is synced so the condition still agrees on both sides.
         walk.setPlayCondition(a -> this.canPlayLocomotion() && !this.isSwimDeep() && this.isMoving()
-                && !this.isAggressive());
+                && !this.isRunning());
         sprint.setPlayCondition(a -> this.canPlayLocomotion() && !this.isSwimDeep() && this.isMoving()
-                && this.isAggressive());
+                && this.isRunning());
         // The calf has no authored water idle, so it uses the swim clip whenever it is in water.
         waterIdle.setPlayCondition(a -> this.canPlayLocomotion() && this.isSwimDeep() && !this.isMoving()
                 && !this.isBaby());
