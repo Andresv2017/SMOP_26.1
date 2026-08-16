@@ -81,6 +81,11 @@ import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.core.Direction;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.vehicle.DismountHelper;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
 import org.jetbrains.annotations.NotNull;
@@ -228,6 +233,13 @@ public class HellHippoEntity extends GenderedSMOPAnimal
 
     /** The idle gesture: a full-body shake. @see #registerGoals() */
     private static final String ANIM_SHAKE = "shake";
+    /**
+     * Grazing, as a second resting gesture. 1.20.1 authored this clip and drove it from its own
+     * {@code eatAnimationState}, which nothing in the port had taken over, so it sat unused. It is
+     * cosmetic — no food is consumed and nothing is healed — which is exactly what
+     * {@link IdleAnimationGoal} is for.
+     */
+    private static final String ANIM_EAT = "eat";
     /** Floor between shakes, plus its spread: 45 to 90 seconds. */
     private static final int SHAKE_COOLDOWN_TICKS = 900;
     private static final int SHAKE_COOLDOWN_SPREAD_TICKS = 900;
@@ -417,7 +429,12 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         // that walks into water mid-shake has the gesture cut, because IdleAnimationGoal re-tests
         // this one while running.
         this.goalSelector.addGoal(8, new IdleAnimationGoal(this, SHAKE_COOLDOWN_TICKS, SHAKE_COOLDOWN_SPREAD_TICKS)
-                .add(ANIM_SHAKE)
+                // Grazing is the common gesture and the shake the occasional one: a hippo standing
+                // around crops grass far more often than it shakes itself off, and the shake already
+                // has its own trigger on leaving the water. Both share the one cooldown, so the two
+                // can never land back to back.
+                .add(ANIM_EAT, 3)
+                .add(ANIM_SHAKE, 1)
                 .condition(animal -> !animal.isInWater()));
         this.goalSelector.addGoal(9, new LookAtPlayerGoal(this, Player.class, 6.0F));
         this.goalSelector.addGoal(10, new RandomLookAroundGoal(this));
@@ -1055,7 +1072,73 @@ public class HellHippoEntity extends GenderedSMOPAnimal
     @Override
     protected @NotNull Vec3 getPassengerAttachmentPoint(@NotNull Entity passenger,
                                                         @NotNull EntityDimensions dimensions, float scale) {
-        return new Vec3(0.0D, dimensions.height() * 0.62D * scale, -0.15D * scale);
+        // THIS IS THE CAMERA, not the visible seat. The two are independent here, which is what
+        // makes the number free to choose: HellHippoRenderer#applyRiderTransform re-derives where the
+        // rider is DRAWN from the model's own bones (root -> body -> torso) and never reads this
+        // point, so raising it lifts the first-person eye and the third-person pivot while the rider
+        // stays painted on the saddle exactly where it was.
+        //
+        // The history: 0.62 put it at 1.55 on a 2.5-tall animal, and the torso cube's top edge — the
+        // real back — measures 1.84 above the feet (root 24 -> body -20 -> torso +0.5, cube top -10,
+        // so 29.5px up). The camera was therefore 0.29 blocks INSIDE the body and looked out from
+        // within the animal's own back. 1.84 cleared that, but the head tops out at 2.69 and the bulk
+        // still ate most of the lower screen in third person.
+        //
+        // 1.0 puts the eye at the top of the hitbox, 2.5, which is above the back and just under the
+        // head. Raise it further if the body still crowds the view; the only cost is that the rider's
+        // own hitbox floats above where they are drawn, which on a mount nothing depends on.
+        return new Vec3(0.0D, dimensions.height() * 1.0D * scale, -0.15D * scale);
+    }
+
+    /**
+     * Puts a dismounting rider down beside the animal instead of wherever vanilla lands them.
+     *
+     * <p>This is {@code AbstractHorse}'s algorithm, which 1.20.1 got by inheritance and this port
+     * does not: {@link net.darkblade.smop.entity.SMOPAnimal} descends from {@code TamableAnimal}, so
+     * the mount-specific half of the horse never came with it. The default is
+     * {@code Entity#getDismountLocationForPassenger}, which just hands back the vehicle's own
+     * position — fine for something narrow, but this animal is 2.5 blocks wide, so its centre is a
+     * place a player can be standing inside a wall or another block entirely.
+     *
+     * <p>What it does instead: sweep the offsets to either side of the direction of travel, and take
+     * the first that has a real floor and enough room for one of the rider's dismount poses (standing,
+     * then crouching, then swimming). Falling back to {@code super} when nothing fits is deliberate —
+     * a rider trapped on a mount is worse than one nudged into a tight spot.
+     */
+    @Override
+    public @NotNull Vec3 getDismountLocationForPassenger(@NotNull LivingEntity passenger) {
+        Direction direction = this.getMotionDirection();
+        if (direction.getAxis() == Direction.Axis.Y) {
+            return super.getDismountLocationForPassenger(passenger);
+        }
+
+        int[][] offsets = DismountHelper.offsetsForDirection(direction);
+        // AbstractHorse's offsets are +-1 block, which is fine for a mount about 1.4 wide. This one
+        // is 2.5, so half of it alone is 1.25 — every one of those candidates still lands UNDER the
+        // animal. DismountHelper only tests terrain, not the vehicle, so they all pass and the rider
+        // is placed inside the hippo and shoved out again: exactly the behaviour this was meant to
+        // fix. Scaling them out by the animal's own half-width plus the rider's is what makes the
+        // candidates actually clear it.
+        int spread = Mth.ceil(this.getBbWidth() / 2.0F + 0.5F);
+        BlockPos origin = this.blockPosition();
+        BlockPos.MutableBlockPos candidate = new BlockPos.MutableBlockPos();
+
+        for (Pose pose : passenger.getDismountPoses()) {
+            AABB bounds = passenger.getLocalBoundsForPose(pose);
+            for (int[] offset : offsets) {
+                candidate.set(origin.getX() + offset[0] * spread, origin.getY(), origin.getZ() + offset[1] * spread);
+                double floor = this.level().getBlockFloorHeight(candidate);
+                if (!DismountHelper.isBlockFloorValid(floor)) {
+                    continue;
+                }
+                Vec3 spot = Vec3.upFromBottomCenterOf(candidate, floor);
+                if (DismountHelper.canDismountTo(this.level(), passenger, bounds.move(spot))) {
+                    passenger.setPose(pose);
+                    return spot;
+                }
+            }
+        }
+        return super.getDismountLocationForPassenger(passenger);
     }
 
     /**
@@ -1521,7 +1604,15 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         StandardAnimation awakening = clip("awakening",
                 () -> HellHippoAnimations.awakening, () -> HellHippoBabyAnimations.awakening,
                 Loop.PLAY_ONCE, 1, 1.5F);
+        // Trimmed from the clip's own withLength(3.5F), same reasoning as the bite above: 11 of its
+        // 13 channels are already sitting at neutral by 3.0 (head 2.96, neck 3.04), so the last half
+        // second was a dead neutral pose held before locomotion could take the frame back — the
+        // "stiff at the end". Only torso (3.29) and the tail pair lose any settle, and the rig's
+        // 220 ms crossfade covers that.
         StandardAnimation shake = clip(ANIM_SHAKE, () -> HellHippoAnimations.shake, () -> HellHippoBabyAnimations.shake,
+                Loop.PLAY_ONCE, 1, 3.05F);
+        // Both rigs author eat at withLength(3.5F); verified rather than assumed.
+        StandardAnimation eat = clip(ANIM_EAT, () -> HellHippoAnimations.eat, () -> HellHippoBabyAnimations.eat,
                 Loop.PLAY_ONCE, 1, 3.5F);
         // The stare-down, in three pieces. It arrived from 1.20.1 as ONE 7.5-second clip and was
         // registered that way at first, which looked wrong for a reason no amount of looping could
@@ -1567,11 +1658,13 @@ public class HellHippoEntity extends GenderedSMOPAnimal
                 .anchor(1.9F, 0.0F, 0.9F)
                 .damage((float) this.getAttributeValue(Attributes.ATTACK_DAMAGE))
                 .knockback(0.6F)
-                // A wide bite from a body this size would otherwise maul any hippo standing nearby,
-                // including the calf beside its mother. Same exclusion the Krifto carries, and for
-                // the same reason: it still allows hitting one that IS the current target.
-                .filter(target -> !this.hasPassenger(target)
-                        && (target == this.getTarget() || !(target instanceof HellHippoEntity)))
+                // Hippos CAN maul each other, deliberately. The species exclusion that used to sit
+                // here spared any hippo that was not the current target, on the reasoning that a bite
+                // this wide would otherwise catch the calf standing beside its mother — but it also
+                // made a fight between two of them impossible to resolve with anything but the
+                // declared target, which is not how a bite that sweeps a box works. Only the rider is
+                // still spared, since biting your own passenger is never intended.
+                .filter(target -> !this.hasPassenger(target))
                 .applyTo(attack);
 
         // Exactly one of these holds at any moment: deep enough for the water set or not, moving or
@@ -1601,6 +1694,7 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         preparingSleep.setNextAnimation("sleep");
 
         shake.setPlayCondition(a -> this.isPerforming(ANIM_SHAKE));
+        eat.setPlayCondition(a -> this.isPerforming(ANIM_EAT));
         // Not a scripted action like the shake: this one follows a synced STATE, because the mob has
         // to hold the pose for the whole 15-second window rather than play a gesture once. Priority 1
         // so it sits over locomotion but under the bite.
@@ -1623,7 +1717,7 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         death.blockAdditive();
 
         this.animator().register(idle, walk, sprint, waterIdle, swim,
-                preparingSleep, sleep, awakening, shake,
+                preparingSleep, sleep, awakening, shake, eat,
                 intimidateIn, intimidateLoop, intimidateOut, attack);
         // registerDeath, not register: it also makes the clip non-interruptible and holds the corpse
         // in the world for its full length instead of vanilla's fixed 20 ticks. Priority 0 so it wins

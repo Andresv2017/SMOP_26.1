@@ -88,6 +88,15 @@ public final class SMOPDatagen {
                             .add(LootItem.lootTableItem(SMOPItems.KRIFTO_WING.get())
                                     .apply(SetItemCountFunction.setCount(UniformGenerator.between(0.0F, 2.0F))))));
 
+            // One cut of meat, exactly as 1.20.1's hand-written hell_hippo.json had it: a single pool
+            // of one roll holding raw meat at chance 1. Without this table the animal dropped nothing
+            // at all, which left both HELL_HIPPO_RAW_MEAT and HELL_HIPPO_COOKED_MEAT unobtainable in
+            // survival — the cooked one being the mod's own creative-tab icon.
+            this.add(SMOPEntities.HELL_HIPPO.get(), LootTable.lootTable()
+                    .withPool(LootPool.lootPool()
+                            .setRolls(ConstantValue.exactly(1))
+                            .add(LootItem.lootTableItem(SMOPItems.HELL_HIPPO_RAW_MEAT.get()))));
+
             // One fillet per fish.
             this.add(SMOPEntities.SALMON.get(), LootTable.lootTable()
                     .withPool(LootPool.lootPool()
