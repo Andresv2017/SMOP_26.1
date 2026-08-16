@@ -105,6 +105,30 @@ public final class SMOPItems {
      * breaking the block as a player would: the drop is what it <em>found</em> buried, not what the
      * block itself yields.
      */
+    /**
+     * The rare find: what was buried long before anyone was around to bury it.
+     *
+     * <p>Rolled <em>before</em> the substrate pool rather than merged into it — see
+     * {@code SalmonDigGoal#dropFor}. Merging would have been the smaller edit and the wrong one:
+     * the pools hold two to four items each, so dropping a dozen sherds in would have made the
+     * relic the ordinary result and the stick the rarity, which is backwards.
+     *
+     * <p>Vanilla's sherds are deliberate rather than decorative. Sand and gravel are the two
+     * substrates its own archaeology uses, so a fish turning them over and surfacing pottery reads
+     * as the same act the player already knows from suspicious blocks — and {@code ANGLER} in
+     * particular is the sherd about fishing. Bone covers what pottery does not.
+     */
+    public static final java.util.List<Item> RELIC_DIG_DROPS = java.util.List.of(
+            Items.ANGLER_POTTERY_SHERD,
+            Items.SHELTER_POTTERY_SHERD,
+            Items.SNORT_POTTERY_SHERD,
+            Items.HOWL_POTTERY_SHERD,
+            Items.MOURNER_POTTERY_SHERD,
+            Items.SKULL_POTTERY_SHERD,
+            Items.DANGER_POTTERY_SHERD,
+            Items.EXPLORER_POTTERY_SHERD,
+            Items.BONE);
+
     public static final java.util.List<Item> SAND_DIG_DROPS = java.util.List.of(Items.STICK, Items.SANDSTONE);
     public static final java.util.List<Item> GRAVEL_DIG_DROPS = java.util.List.of(Items.FLINT);
     public static final java.util.List<Item> MUD_DIG_DROPS = java.util.List.of(Items.CLAY_BALL);

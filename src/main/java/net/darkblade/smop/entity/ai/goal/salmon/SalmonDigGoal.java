@@ -431,10 +431,25 @@ public class SalmonDigGoal extends Goal {
         if (pool.isEmpty()) {
             return;
         }
+        // Substrate the fish will actually turn over, so a relic is possible here. Rolled as a
+        // replacement for the ordinary find rather than in addition to it: two drops from one dig
+        // would read as a bug, and the point of a relic is that it came up INSTEAD of the silt.
+        if (level.getRandom().nextFloat() < RELIC_CHANCE) {
+            pool = SMOPItems.RELIC_DIG_DROPS;
+        }
         ItemStack drop = new ItemStack(pool.get(level.getRandom().nextInt(pool.size())));
         level.addFreshEntity(new ItemEntity(level,
                 pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D, drop));
     }
+
+    /**
+     * How often a dig turns up a relic instead of the substrate's ordinary contents.
+     *
+     * <p>Low on purpose. The fish digs on its own schedule with no player input, so this is a passive
+     * trickle, not a farm — at one in eight it stays a thing you notice happening rather than a thing
+     * you stand and wait for. Raise it if the dig turns out to be rarer in play than it looks here.
+     */
+    private static final float RELIC_CHANCE = 0.125F;
 
     private static List<Item> poolFor(Block block) {
         if (block == Blocks.SAND) return SMOPItems.SAND_DIG_DROPS;
