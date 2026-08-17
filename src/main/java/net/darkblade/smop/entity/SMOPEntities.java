@@ -2,6 +2,7 @@ package net.darkblade.smop.entity;
 
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
+import net.darkblade.smop.entity.niras.NirasmosaurusEntity;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
 import net.darkblade.smop.entity.salmon.SalmonEntity;
 import net.darkblade.smop.entity.tangoftero.TangofteroEntity;
@@ -46,6 +47,18 @@ public final class SMOPEntities {
                             .sized(2.5F, 2.5F)
                             .clientTrackingRange(10)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("hell_hippo"))));
+
+    /**
+     * 3.0 long and 1.6 tall: one AABB, not the multipart hitbox 1.20.1 gave it. See the port spec —
+     * {@code PartEntity} support does not exist in DeluxeLib yet and lands with the Grand Tyrant,
+     * which needs it far more than a mount does.
+     */
+    public static final DeferredHolder<EntityType<?>, EntityType<NirasmosaurusEntity>> NIRASMOSAURUS =
+            ENTITY_TYPES.register("nirasmosaurus",
+                    () -> EntityType.Builder.<NirasmosaurusEntity>of(NirasmosaurusEntity::new, MobCategory.CREATURE)
+                            .sized(3.0F, 1.6F)
+                            .clientTrackingRange(10)
+                            .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("nirasmosaurus"))));
 
     public static void register(IEventBus modEventBus) {
         ENTITY_TYPES.register(modEventBus);

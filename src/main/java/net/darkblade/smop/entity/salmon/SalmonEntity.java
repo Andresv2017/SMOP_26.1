@@ -10,6 +10,9 @@ import net.darkblade.smop.SMOP;
 import net.darkblade.smop.block.SMOPBlocks;
 import net.darkblade.smop.client.salmon.SalmonAnimations;
 import net.darkblade.smop.entity.SMOPWaterAnimal;
+import net.darkblade.smop.entity.ai.control.SwimSteerControl;
+import net.darkblade.smop.entity.ai.goal.SwimWanderGoal;
+import net.darkblade.smop.entity.ai.navigation.SmartSwimmingNavigation;
 import net.darkblade.smop.entity.ai.goal.GenericBreedGoal;
 import net.darkblade.smop.entity.ai.goal.egg.EggGoalRegistry;
 import net.darkblade.smop.entity.ai.goal.egg.ProtectEggBaseGoal;
@@ -33,8 +36,8 @@ import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.ai.goal.RandomSwimmingGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -63,8 +66,44 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
     /** A pufferfish only buys one dig per minute, so a stack is not an excavation machine. */
     private static final int DIG_COMMAND_COOLDOWN_TICKS = 1200;
 
-    /** Above this speed (blocks/tick) the sprint clip takes over from the cruise clip. */
-    private static final double SWIM_SPRINT_THRESHOLD = 0.105D;
+    /**
+     * Swim steer, scaled for a fish rather than for the three-block reptile it was written against.
+     *
+     * <p>Six degrees a tick against vanilla's ten and the Nirasmosaurus's 2.2, and a five-tick ramp
+     * against its fifteen. The point of the shared control is the <em>shape</em> of a turn — wind up,
+     * hold, ease out, never a step — not the mass of any particular animal; a salmon that took three
+     * quarters of a second to commit to a turn would read as a log. The in-water speed multiplier is
+     * 0.02, exactly what {@code SmoothSwimmingMoveControl} was using here, so the cruise speed is
+     * unchanged and only the steering is different.
+     */
+    private static final float SWIM_TURN_SPEED = 6.0F;
+    private static final float SWIM_MAX_PITCH = 45.0F;
+    private static final float SWIM_PITCH_SPEED = 6.0F;
+    private static final float SWIM_SPEED_SCALE = 0.02F;
+    private static final float SWIM_RAMP_TICKS = 5.0F;
+
+    /**
+     * Pure-pursuit lookahead, in blocks. Three, against the Nirasmosaurus's seven: the aim point has to
+     * sit beyond the turn radius to smooth anything, and this animal's is a fraction of that one's.
+     * Longer would just cut corners off its own route.
+     */
+    private static final double SWIM_LOOKAHEAD = 3.0D;
+
+    /**
+     * Wander legs, in blocks, and the heading cone in degrees.
+     *
+     * <p>12–22 and 70, worked from the rule rather than copied: a leg has to outlast the turn that
+     * opens it. Seventy degrees at six a tick plus the ramp is about twenty-two ticks; a leg with the
+     * five-block hand-over taken off is seven to seventeen blocks, which this animal crosses in sixty
+     * to a hundred and forty. Comfortable margin, where the Nirasmosaurus's first attempt had none.
+     *
+     * <p>The cone is wider than that animal's 55 on purpose — a fish is allowed to be capricious in a
+     * way a marine reptile is not. And 22 stays under {@code FOLLOW_RANGE}, so unlike the
+     * Nirasmosaurus this one needs no {@code setRequiredPathLength}: every leg it draws is pathable.
+     */
+    private static final double WANDER_LEG_MIN = 12.0D;
+    private static final double WANDER_LEG_SPREAD = 10.0D;
+    private static final float WANDER_CONE_DEGREES = 70.0F;
 
     /** Frame of the {@code dig} clip on which the snout actually turns the block over. */
     private static final int DIG_BREAK_FRAME = 35;
@@ -88,6 +127,23 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         super(type, level);
         this.setOutOfWaterMaxTicks(80);
         this.setOutOfWaterDamage(2.0F);
+        this.moveControl = new SwimSteerControl(
+                this, SWIM_TURN_SPEED, SWIM_MAX_PITCH, SWIM_PITCH_SPEED, SWIM_SPEED_SCALE)
+                .rampTicks(SWIM_RAMP_TICKS);
+    }
+
+    /**
+     * The look control is deliberately left alone — the base's {@code SmoothSwimmingLookControl} stays.
+     *
+     * <p>The Nirasmosaurus replaced it because its three fish quirks all read wrong on a long skull
+     * with forward eyes, and the loudest of them is that it aims the head twenty degrees off whatever
+     * it is watching. That one is not a bug here: Mojang wrote it for fish, and a fish regarding
+     * something side-on is what it is meant to look like. Sharing the navigation and the steering does
+     * not mean sharing everything.
+     */
+    @Override
+    protected @NotNull PathNavigation createNavigation(@NotNull Level level) {
+        return new SmartSwimmingNavigation(this, level).setLookahead(SWIM_LOOKAHEAD);
     }
 
     /**
@@ -105,9 +161,21 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
                 .add(Attributes.ATTACK_DAMAGE, 1.0D);
     }
 
+    /**
+     * The sprint clip runs while it has something to deal with — by goal, not by speed.
+     *
+     * <p>The base's default is a speed threshold, and the salmon's was 0.105 blocks a tick, which sits
+     * right on top of its own cruise: the flag chattered across the line and the two locomotion clips
+     * swapped with it. No threshold fixes that, because speed is not what the clip is about. Its only
+     * target route is {@code HurtByTargetGoal}, so a target means it is fighting back or running from
+     * whatever just bit it — which is exactly when a fish should be flat out.
+     *
+     * <p>{@code getTarget()} is not synced, and that is fine here: this runs server-side and the base
+     * syncs the result. @see SMOPWaterAnimal#shouldSwimFast
+     */
     @Override
-    protected double getSwimSpeedThreshold() {
-        return SWIM_SPRINT_THRESHOLD;
+    protected boolean shouldSwimFast() {
+        return this.getTarget() != null;
     }
 
     // ───────────────────────────────────────────────────── GOALS ─────
@@ -131,7 +199,14 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
                 4, 6, false, false,
                 ProtectEggBaseGoal.EggBreakReaction.IGNORE, NO_PREY, 5);
 
-        this.goalSelector.addGoal(8, new RandomSwimmingGoal(this, 1.0D, 10));
+        // SwimWanderGoal, not RandomSwimmingGoal. That one draws a point ten blocks away in any
+        // direction — half of every draw lands behind the fish, so each leg opens with a U-turn — and
+        // then ends the moment it arrives, leaving the animal parked until the next interval roll.
+        // Swim, stop, spin, wait. Staying at priority 8 keeps digging, breeding and the nest ahead of
+        // it, exactly as before.
+        this.goalSelector.addGoal(8, new SwimWanderGoal(this, 1.0D, () -> !this.isMovementLocked())
+                .legLength(WANDER_LEG_MIN, WANDER_LEG_SPREAD)
+                .cone(WANDER_CONE_DEGREES));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this));
     }
@@ -181,7 +256,7 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         // Mutually exclusive by construction: exactly one of these four holds at any moment.
         idle.setPlayCondition(a -> this.isInWater() && !this.isMoving());
         swim.setPlayCondition(a -> this.isInWater() && this.isSwimmingCruise());
-        fastSwim.setPlayCondition(a -> this.isInWater() && this.isSwimmingFast());
+        fastSwim.setPlayCondition(a -> this.isInWater() && this.isMoving() && this.isSwimmingFast());
         flopping.setPlayCondition(a -> !this.isInWater() && !this.isDeadOrDying());
 
         // Death variant chosen by where it died — the conditions are only consulted at the moment

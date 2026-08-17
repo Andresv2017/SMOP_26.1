@@ -33,11 +33,43 @@ import org.jetbrains.annotations.NotNull;
  */
 public class SmartSwimmingNavigation extends WaterBoundPathNavigation {
 
-    /** Squared node-acceptance radius: 4 = two blocks. */
-    private static final double NODE_ACCEPT_RADIUS_SQR = 4.0D;
+    /** Squared node-acceptance radius: 4 = two blocks. The default, kept for the salmon. */
+    private static final double DEFAULT_NODE_ACCEPT_RADIUS_SQR = 4.0D;
+
+    private double nodeAcceptRadiusSqr = DEFAULT_NODE_ACCEPT_RADIUS_SQR;
+    private double lookahead;
 
     public SmartSwimmingNavigation(Mob mob, Level level) {
         super(mob, level);
+    }
+
+    /**
+     * How close a node counts as reached, in blocks. Bigger suits a bigger animal: the slack is what
+     * stops something with momentum circling a node it keeps overshooting.
+     */
+    public SmartSwimmingNavigation setNodeAcceptRadius(double blocks) {
+        this.nodeAcceptRadiusSqr = blocks * blocks;
+        return this;
+    }
+
+    /**
+     * Steer at a point this far along the path instead of at the next node. Zero keeps the vanilla
+     * behaviour, which is what the salmon still uses.
+     *
+     * <p><b>What this fixes.</b> A* returns block-centre nodes, so the heading the move control is
+     * asked for changes discontinuously every time the path advances one. On a mob with a generous
+     * turn budget that is invisible; on one capped at three degrees a tick it is not. A tick sample
+     * of this animal showed yaw moving in runs of exactly 3.000 — the cap saturated — separated by
+     * near-flat stretches, which is the signature of chasing a target that teleports. Aiming further
+     * down the path means the steer point slides continuously instead of jumping, so the same cap
+     * produces a smooth arc.
+     *
+     * <p>This is pure pursuit, and the lookahead is the usual trade: too short and the jumps return,
+     * too long and the animal cuts corners because it stops tracking the route it was given.
+     */
+    public SmartSwimmingNavigation setLookahead(double blocks) {
+        this.lookahead = blocks;
+        return this;
     }
 
     @Override
@@ -66,8 +98,34 @@ public class SmartSwimmingNavigation extends WaterBoundPathNavigation {
             return;
         }
         Vec3 next = this.path.getNextEntityPos(this.mob);
-        if (this.mob.distanceToSqr(next.x, next.y, next.z) < NODE_ACCEPT_RADIUS_SQR) {
+        if (this.mob.distanceToSqr(next.x, next.y, next.z) < this.nodeAcceptRadiusSqr) {
             this.path.advance();
+        }
+        this.steerAhead();
+    }
+
+    /**
+     * Re-points the move control at a node further along the path. @see #setLookahead(double)
+     *
+     * <p>Runs after {@code super.tick()} has already set the wanted position to the next node, and
+     * simply overwrites it — cheaper and far less fragile than reimplementing the base's own path
+     * following just to change which node it aims at.
+     */
+    private void steerAhead() {
+        if (this.lookahead <= 0.0D || this.path == null || this.path.isDone()) {
+            return;
+        }
+        double wanted = this.lookahead * this.lookahead;
+        int last = this.path.getNodeCount() - 1;
+        for (int i = this.path.getNextNodeIndex(); i <= last; i++) {
+            Vec3 candidate = this.path.getEntityPosAtNode(this.mob, i);
+            // The first node far enough ahead wins; the final node is the floor, so the animal always
+            // still ends up steering at its actual destination rather than past it.
+            if (i == last || this.mob.distanceToSqr(candidate.x, candidate.y, candidate.z) >= wanted) {
+                this.mob.getMoveControl().setWantedPosition(
+                        candidate.x, candidate.y, candidate.z, this.speedModifier);
+                return;
+            }
         }
     }
 }

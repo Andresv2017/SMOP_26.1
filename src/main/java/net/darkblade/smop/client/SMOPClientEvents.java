@@ -4,6 +4,9 @@ import net.darkblade.smop.SMOP;
 import net.darkblade.smop.client.hellhippo.HellHippoBabyModel;
 import net.darkblade.smop.client.hellhippo.HellHippoModel;
 import net.darkblade.smop.client.hellhippo.HellHippoRenderer;
+import net.darkblade.smop.client.niras.NirasBabyModel;
+import net.darkblade.smop.client.niras.NirasRenderer;
+import net.darkblade.smop.client.niras.NirasmosaurusModel;
 import net.darkblade.smop.client.krifto.KriftoBabyModel;
 import net.darkblade.smop.client.krifto.KriftognathusModel;
 import net.darkblade.smop.client.krifto.KriftognathusRenderer;
@@ -31,6 +34,8 @@ public final class SMOPClientEvents {
         event.registerLayerDefinition(KriftoBabyModel.LAYER_LOCATION, KriftoBabyModel::createBodyLayer);
         event.registerLayerDefinition(HellHippoModel.LAYER_LOCATION, HellHippoModel::createBodyLayer);
         event.registerLayerDefinition(HellHippoBabyModel.LAYER_LOCATION, HellHippoBabyModel::createBodyLayer);
+        event.registerLayerDefinition(NirasmosaurusModel.LAYER_LOCATION, NirasmosaurusModel::createBodyLayer);
+        event.registerLayerDefinition(NirasBabyModel.LAYER_LOCATION, NirasBabyModel::createBodyLayer);
     }
 
     @SubscribeEvent
@@ -39,6 +44,7 @@ public final class SMOPClientEvents {
         event.registerEntityRenderer(SMOPEntities.SALMON.get(), SalmonRenderer::new);
         event.registerEntityRenderer(SMOPEntities.KRIFTOGNATHUS.get(), KriftognathusRenderer::new);
         event.registerEntityRenderer(SMOPEntities.HELL_HIPPO.get(), HellHippoRenderer::new);
+        event.registerEntityRenderer(SMOPEntities.NIRASMOSAURUS.get(), NirasRenderer::new);
     }
 
     private SMOPClientEvents() {}

@@ -164,7 +164,7 @@ public abstract class SMOPWaterAnimal extends GenderedSMOPAnimal {
         if (this.level().isClientSide()) {
             return;
         }
-        this.entityData.set(SWIMMING_FAST, this.fastHold.tick(this.isSwimmingFastNow()));
+        this.entityData.set(SWIMMING_FAST, this.fastHold.tick(this.shouldSwimFast()));
         this.tickDryOut();
     }
 
@@ -182,7 +182,21 @@ public abstract class SMOPWaterAnimal extends GenderedSMOPAnimal {
         }
     }
 
-    private boolean isSwimmingFastNow() {
+    /**
+     * Whether the sprint clip should be running, sampled once a tick on the server and synced.
+     *
+     * <p>The default is a speed test, and on a fast swimmer that is the wrong question. A cruising
+     * animal is already past any threshold worth setting, so the sprint clip becomes the only one ever
+     * seen and the cruise clip is dead art; set it higher and it never fires at all. There is no value
+     * that works, because speed is not what a sprint <em>means</em> — a sprint is the animal deciding
+     * to go somewhere in a hurry, which is a fact about its goals.
+     *
+     * <p>Override with that fact. Reading {@code getTarget()} here is safe and is the usual answer,
+     * even though the target is not synced: this runs on the server and the RESULT is what crosses to
+     * the client, in {@link #SWIMMING_FAST}. That is the whole reason the flag is synced rather than
+     * sampled in the play condition, and it means a goal-driven sprint costs nothing extra to set up.
+     */
+    protected boolean shouldSwimFast() {
         return this.getDeltaMovement().horizontalDistanceSqr()
                 > this.getSwimSpeedThreshold() * this.getSwimSpeedThreshold();
     }

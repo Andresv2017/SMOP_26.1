@@ -3,6 +3,7 @@ package net.darkblade.smop.event;
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.SMOPEntities;
 import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
+import net.darkblade.smop.entity.niras.NirasmosaurusEntity;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
 import net.darkblade.smop.entity.salmon.SalmonEntity;
 import net.darkblade.smop.entity.tangoftero.TangofteroEntity;
@@ -23,6 +24,7 @@ public final class SMOPEntityAttributes {
         event.put(SMOPEntities.SALMON.get(), SalmonEntity.createAttributes().build());
         event.put(SMOPEntities.KRIFTOGNATHUS.get(), KriftognathusEntity.createAttributes().build());
         event.put(SMOPEntities.HELL_HIPPO.get(), HellHippoEntity.createAttributes().build());
+        event.put(SMOPEntities.NIRASMOSAURUS.get(), NirasmosaurusEntity.createAttributes().build());
     }
 
     /**
@@ -55,6 +57,15 @@ public final class SMOPEntityAttributes {
                 SpawnPlacementTypes.ON_GROUND,
                 Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
                 HellHippoEntity::checkHellHippoSpawnRules,
+                RegisterSpawnPlacementsEvent.Operation.REPLACE);
+
+        // IN_WATER, unlike the hippo above: this one is a water animal that hauls out, so the water
+        // is where it should first appear. Its own rule still accepts a shoreline block, which is
+        // what lets one show up basking instead of always submerged.
+        event.register(SMOPEntities.NIRASMOSAURUS.get(),
+                SpawnPlacementTypes.IN_WATER,
+                Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                NirasmosaurusEntity::checkNirasSpawnRules,
                 RegisterSpawnPlacementsEvent.Operation.REPLACE);
     }
 
