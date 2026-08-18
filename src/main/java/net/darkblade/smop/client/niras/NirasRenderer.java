@@ -67,6 +67,25 @@ public class NirasRenderer
         poseStack.mulPose(Axis.ZP.rotationDegrees(-state.swimRoll));
     }
 
+    /**
+     * Off, so the authored death clips own the collapse.
+     *
+     * <p>Vanilla rolls a dying mob itself: {@code LivingEntityRenderer#setupRotations} multiplies the
+     * pose stack by {@code Axis.ZP.rotationDegrees(fall * getFlipDegrees())}, and the default is 90°.
+     * Both death clips here turn the body about that same axis — the land one lists it 22.5°, the
+     * water one capsizes it 110° — so with vanilla's roll live they compose: 22.5 + 90 comes out at
+     * about 112, which is within two degrees of the water clip's own 110. That is why dying on dry
+     * sand looked exactly like drowning, and why no amount of correcting the CHOICE fixed it — the
+     * right clip was playing all along, with vanilla's tip-over stacked on top.
+     *
+     * <p>The Hell Hippo carries the same override for the same reason; its clip turns −82.5° and read
+     * as a corpse still standing.
+     */
+    @Override
+    protected float getFlipDegrees() {
+        return 0.0F;
+    }
+
     @Override
     public @NotNull Identifier getTextureLocation(@NotNull NirasRenderState state) {
         // One calf coat for both sexes: niras_baby.png is all the export provides.

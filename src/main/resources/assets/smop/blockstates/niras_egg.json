@@ -1,16 +1,31 @@
 {
   "variants": {
-    "hatch=0": [
+    "hatch=0,waterlogged=false": [
       {
         "model": "smop:block/niras_egg/niras_egg1"
       }
     ],
-    "hatch=1": [
+    "hatch=0,waterlogged=true": [
+      {
+        "model": "smop:block/niras_egg/niras_egg1"
+      }
+    ],
+    "hatch=1,waterlogged=false": [
       {
         "model": "smop:block/niras_egg/niras_egg2"
       }
     ],
-    "hatch=2": [
+    "hatch=1,waterlogged=true": [
+      {
+        "model": "smop:block/niras_egg/niras_egg2"
+      }
+    ],
+    "hatch=2,waterlogged=false": [
+      {
+        "model": "smop:block/niras_egg/niras_egg3"
+      }
+    ],
+    "hatch=2,waterlogged=true": [
       {
         "model": "smop:block/niras_egg/niras_egg3"
       }

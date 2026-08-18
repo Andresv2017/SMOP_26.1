@@ -43,7 +43,10 @@ public final class SMOPCommands {
                                 .then(spawnBabyLiteral("kriftognathus", SMOPEntities.KRIFTOGNATHUS.get()))
                                 .then(spawnBabyLiteral("hell_hippo", SMOPEntities.HELL_HIPPO.get()))
                                 .then(spawnBabyLiteral("nirasmosaurus", SMOPEntities.NIRASMOSAURUS.get()))))
-                .then(SMOPSwimDebug.build()));
+                .then(SMOPSwimDebug.build())
+                .then(SMOPSpawnDebug.build())
+                .then(SMOPNestDebug.build())
+                .then(SMOPDeathDebug.build()));
     }
 
     /** One {@code <name> [pos]} literal, spawning {@code type} as a baby at the given or current position. */

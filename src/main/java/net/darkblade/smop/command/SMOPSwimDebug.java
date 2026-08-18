@@ -7,7 +7,9 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.darkblade.smop.SMOP;
+import net.darkblade.smop.entity.SMOPAnimal;
 import net.darkblade.smop.entity.SMOPWaterAnimal;
+import net.darkblade.smop.entity.niras.NirasmosaurusEntity;
 import net.darkblade.smop.entity.SwimTilt;
 import net.minecraft.util.Mth;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -202,6 +204,22 @@ public final class SMOPSwimDebug {
                 line("sprint", mob instanceof SMOPWaterAnimal swimmer
                         ? "fast=" + swimmer.isSwimmingFast() + " cruise=" + swimmer.isSwimmingCruise()
                           + " target=" + (mob.getTarget() == null ? "none" : mob.getTarget().getName().getString())
+                        : "n/a"),
+                // The sleep cycle and the clutch, because both are state you would otherwise have to
+                // infer from what the animal happens to be doing. The medium here is the LATCH, not
+                // where the animal is now: that is the whole point of it, and a mismatch between this
+                // and the `medium` line above on a sleeping animal is correct rather than a bug.
+                line("sleep", mob instanceof SMOPAnimal sleeper
+                        ? "phase=" + sleeper.sleepPhase()
+                          + " night=" + sleeper.sleepUrge().isNight()
+                          + " wantsToSleep=" + sleeper.sleepUrge().wantsToSleep()
+                          + (mob instanceof NirasmosaurusEntity niras
+                                ? " latchedInWater=" + niras.isSleepingInWater() : "")
+                        : "n/a"),
+                line("nest", mob instanceof SMOPAnimal layer
+                        ? "hasEgg=" + layer.hasEgg() + " mammal=" + layer.isMammal()
+                          + (layer instanceof net.darkblade.smop.entity.Gendered g
+                                ? " male=" + g.isMale() : "")
                         : "n/a"),
                 line("goals", running.isEmpty() ? "(none running)" : running));
     }

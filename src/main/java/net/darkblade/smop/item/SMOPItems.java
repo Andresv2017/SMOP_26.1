@@ -97,6 +97,9 @@ public final class SMOPItems {
     public static final DeferredItem<net.minecraft.world.item.BlockItem> SALMON_ROE_EGGS =
             ITEMS.registerSimpleBlockItem("salmon_roe_eggs", SMOPBlocks.SALMON_ROE_EGGS);
 
+    public static final DeferredItem<net.minecraft.world.item.BlockItem> NIRAS_EGG =
+            ITEMS.registerSimpleBlockItem("niras_egg", SMOPBlocks.NIRAS_EGG);
+
     // ───────────────────────────────────────────────────── DIG DROPS ─────
 
     /**
@@ -227,6 +230,7 @@ public final class SMOPItems {
                         output.accept(TANGOFTERO_EGG.get());
                         output.accept(KRIFTO_EGG.get());
                         output.accept(SALMON_ROE_EGGS.get());
+                        output.accept(NIRAS_EGG.get());
 
                         // SPAWN EGGS
                         output.accept(TANGOFTERO_SPAWN_EGG.get());

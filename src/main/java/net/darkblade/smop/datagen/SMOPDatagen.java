@@ -97,6 +97,27 @@ public final class SMOPDatagen {
                             .setRolls(ConstantValue.exactly(1))
                             .add(LootItem.lootTableItem(SMOPItems.HELL_HIPPO_RAW_MEAT.get()))));
 
+            // Meat and the beak, rolled independently, following the Kriftognathus' shape: the cut you
+            // butcher an animal for plus the one distinctive part of it.
+            //
+            // NOT ported — 1.20.1 has no nirasmosaurus loot table at all, only hell_hippo.json and
+            // salmon.json, so NIRASMO_MEAT and NIRASMO_BEAK were unobtainable in survival there and
+            // would have stayed unobtainable here. Two of the three items already sit in the creative
+            // tab (raw, cooked and the beak), so the drop is what makes that tab honest.
+            //
+            // 1-2 meat off a three-block animal, against the Hell Hippo's flat 1: this one is longer
+            // than the hippo is wide. The beak is 0-1 rather than the wing's 0-2, because an animal has
+            // one beak — the Kriftognathus has two wings, and its table says so.
+            this.add(SMOPEntities.NIRASMOSAURUS.get(), LootTable.lootTable()
+                    .withPool(LootPool.lootPool()
+                            .setRolls(ConstantValue.exactly(1))
+                            .add(LootItem.lootTableItem(SMOPItems.NIRASMO_MEAT.get())
+                                    .apply(SetItemCountFunction.setCount(UniformGenerator.between(1.0F, 2.0F)))))
+                    .withPool(LootPool.lootPool()
+                            .setRolls(ConstantValue.exactly(1))
+                            .add(LootItem.lootTableItem(SMOPItems.NIRASMO_BEAK.get())
+                                    .apply(SetItemCountFunction.setCount(UniformGenerator.between(0.0F, 1.0F))))));
+
             // One fillet per fish.
             this.add(SMOPEntities.SALMON.get(), LootTable.lootTable()
                     .withPool(LootPool.lootPool()

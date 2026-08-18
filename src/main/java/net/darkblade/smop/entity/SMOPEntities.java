@@ -55,7 +55,47 @@ public final class SMOPEntities {
      */
     public static final DeferredHolder<EntityType<?>, EntityType<NirasmosaurusEntity>> NIRASMOSAURUS =
             ENTITY_TYPES.register("nirasmosaurus",
-                    () -> EntityType.Builder.<NirasmosaurusEntity>of(NirasmosaurusEntity::new, MobCategory.CREATURE)
+                    // WATER_CREATURE. This has now been wrong twice in opposite directions, so the
+                    // measurements that settled it are worth keeping.
+                    //
+                    // The legacy was CREATURE. A first move to WATER_CREATURE was reverted on the
+                    // reasoning that its cap of 5 is shared with squid, dolphins and nautilus and is
+                    // always saturated, while the CREATURE pool in ocean biomes is empty — creature: []
+                    // in every ocean JSON — so any weight at all would win there. Both halves of that
+                    // are true and the conclusion was still wrong, because an empty POOL is worthless
+                    // when the CATEGORY never gets a turn.
+                    //
+                    // What the in-game instrumentation showed (see SMOPSpawnDebug): CREATURE is not
+                    // merely full, it is permanently full by a factor of three to eight and it does not
+                    // recover. Sampled across four different warm oceans in a fresh world, thousands of
+                    // blocks apart, the count ran 27 to 79 against a cap of 10 and never once dropped
+                    // below 27 — usually with no SMOP mob loaded at all. The simulator attributed 100%
+                    // of 4335 attempts to that one gate; not a single attempt ever reached the Y roll.
+                    //
+                    // The cause is that NaturalSpawner#createState counts level.getAllEntities() — the
+                    // WHOLE level, not the player's surroundings — so every cow, sheep, pig and chicken
+                    // in any loaded chunk spends the same budget of ten. At view distance 16 that is
+                    // 1089 chunks of world generation seeding farm animals. And they are Animals, so
+                    // they never despawn. CREATURE is a land-animal budget that happens to be global.
+                    //
+                    // Which is exactly why Mojang leaves creature: [] in the oceans and files squid,
+                    // dolphins and nautilus under WATER_CREATURE. That pool is not empty by oversight;
+                    // the category is unusable at sea, and the empty pool is the consequence.
+                    //
+                    // WATER_CREATURE is saturated too — 5 to 8 against a cap of 5 in the same samples —
+                    // but the two situations are not comparable. It overshoots by a sixth rather than
+                    // several times over, it is consulted EVERY tick instead of one in four hundred
+                    // (MobCategory.isPersistent gates that, and CREATURE is the persistent one), and its
+                    // occupants despawn, so the cap turns over continuously instead of setting like
+                    // concrete. Fish and squid visibly keep spawning in a "full" ocean; nothing CREATURE
+                    // does.
+                    //
+                    // One consequence worth knowing rather than discovering: EntityType.Builder defaults
+                    // canSpawnFarFromPlayer to (category == CREATURE || category == MISC), so leaving
+                    // CREATURE also gives that up and spawns are confined to 128 blocks of a player.
+                    // Squid and dolphins live under the same rule, and for an animal meant to be SEEN
+                    // that is a gain, not a loss.
+                    () -> EntityType.Builder.<NirasmosaurusEntity>of(NirasmosaurusEntity::new, MobCategory.WATER_CREATURE)
                             .sized(3.0F, 1.6F)
                             .clientTrackingRange(10)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("nirasmosaurus"))));

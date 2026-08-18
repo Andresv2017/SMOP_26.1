@@ -33,6 +33,8 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
+
 /**
  * Shared base for every SMOP creature: sleep cycle, roaring, egg laying, and the tame
  * sit/follow/wander order state.
@@ -434,9 +436,15 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
             return null;
         }
 
-        BlockPos pos = this.blockPosition();
         Level level = this.level();
-        if (!this.canPlaceEggAt(level, pos)) {
+        BlockPos pos = null;
+        for (BlockPos candidate : this.eggPlacementPositions()) {
+            if (this.canPlaceEggAt(level, candidate)) {
+                pos = candidate;
+                break;
+            }
+        }
+        if (pos == null) {
             return null;
         }
 
@@ -451,6 +459,18 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
         return pos;
     }
 
+    /**
+     * Where the egg may go, in preference order; the first spot {@link #canPlaceEggAt} accepts wins.
+     *
+     * <p>Under its own feet by default, which is right for anything roughly a block across. A long
+     * body hides its own egg there — laid, correct, and invisible until the player pushes the animal
+     * off it — so a large mob overrides this to offer its flanks first and keeps its feet as the
+     * fallback, so laying never fails outright for want of room beside it.
+     */
+    protected List<BlockPos> eggPlacementPositions() {
+        return List.of(this.blockPosition());
+    }
+
     /** Land mobs must be standing still on the ground; swimmers override this. */
     protected boolean isSettledToLay() {
         return this.onGround();
@@ -459,6 +479,14 @@ public abstract class SMOPAnimal extends TamableAnimal implements Animatable<SMO
     /** Air above a solid block. Water mobs override with a water-source test. */
     protected boolean canPlaceEggAt(Level level, BlockPos pos) {
         return level.getBlockState(pos).isAir() && level.getBlockState(pos.below()).isSolid();
+    }
+
+    /**
+     * Public view of {@link #canPlaceEggAt} for tooling — {@code /smop debug nest} reports the
+     * species' own verdict rather than re-implementing the rule and drifting from it.
+     */
+    public boolean isNestSiteAt(BlockPos pos) {
+        return this.canPlaceEggAt(this.level(), pos);
     }
 
     // ───────────────────────────────────────────────────── ROAR ─────

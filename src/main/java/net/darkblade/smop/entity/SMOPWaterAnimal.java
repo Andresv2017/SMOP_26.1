@@ -17,8 +17,10 @@ import net.minecraft.world.entity.ai.control.SmoothSwimmingMoveControl;
 import net.darkblade.smop.entity.ai.navigation.SmartSwimmingNavigation;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.phys.Vec3;
@@ -83,6 +85,66 @@ public abstract class SMOPWaterAnimal extends GenderedSMOPAnimal {
     @Override
     public boolean isPushedByFluid() {
         return false;
+    }
+
+    /**
+     * Drops the "no liquid in the bounding box" half of the vanilla check.
+     *
+     * <p><b>Without this no SMOP swimmer can spawn naturally underwater at all</b>, which is a silent
+     * hole: {@code Mob#checkSpawnObstruction} is {@code !level.containsAnyLiquid(getBoundingBox()) &&
+     * level.isUnobstructed(this)}, written for land mobs, and it is reached on every natural spawn —
+     * {@code NaturalSpawner#isValidPositionForMob} calls NeoForge's {@code EventHooks.checkSpawnPosition},
+     * which on the default result runs {@code checkSpawnRules() && checkSpawnObstruction()}. A position
+     * in open water fills the box with water and is refused every single time.
+     *
+     * <p>Easy to miss because vanilla's {@code NaturalSpawner} never mentions the method: searching the
+     * Minecraft sources for callers turns up only the trial spawner, and the natural-spawn call site
+     * lives in NeoForge. Every vanilla water mob overrides this the same way — {@code WaterAnimal},
+     * {@code AgeableWaterCreature}, {@code AbstractNautilus}, {@code Axolotl}, {@code Guardian},
+     * {@code Drowned} — and this base extends {@code GenderedSMOPAnimal} rather than any of them, so it
+     * inherited the land version and nobody noticed until a mob was expected to appear in open sea.
+     *
+     * <p>The salmon was affected too, in rivers, for as long as it has existed.
+     */
+    @Override
+    public boolean checkSpawnObstruction(@NotNull LevelReader level) {
+        return level.isUnobstructed(this);
+    }
+
+    /**
+     * Wild swimmers despawn, which {@code Animal} does not do — its {@code removeWhenFarAway} returns a
+     * flat {@code false}, so every SMOP animal is immortal from the moment it spawns.
+     *
+     * <p>That default is what broke ocean spawning outright, and the measurements are worth keeping
+     * because the shape recurs. {@code NaturalSpawner#createState} charges every non-persistent mob to
+     * its category's global budget — and it counts {@code level.getAllEntities()}, the WHOLE level, not
+     * the player's surroundings. Meanwhile world generation seeds with no budget check at all
+     * ({@code spawnOriginalMobs} never consults {@code canSpawnForCategoryGlobal}). An uncapped source
+     * feeding a population that never shrinks is a ratchet: measured live, the CREATURE count ran three
+     * to eight times over its cap and never recovered, at which point
+     * {@code getFilteredSpawningCategories} drops the whole category and nothing in it spawns anywhere.
+     *
+     * <p>Every vanilla sea creature already behaves this way — squid, dolphins, the fish and the
+     * nautilus all inherit {@code Mob}'s {@code true} and cycle out, which is exactly why those water
+     * categories sit at their cap without ever jamming. This base extends {@link GenderedSMOPAnimal}
+     * rather than any of them, so it inherited the land version.
+     *
+     * <p>The two guards are the whole point. Persistence — bucket, spawn egg, {@code /summon} — is
+     * already handled a level up in {@code Mob#checkDespawn}, which never reaches this method for a mob
+     * that {@code isPersistenceRequired()}. What that does NOT cover is taming:
+     * {@code TamableAnimal#tame} sets an owner but not persistence, so without {@code isTame()} here a
+     * tamed mount would vanish the moment its rider walked 128 blocks away. The custom-name guard is
+     * the same courtesy vanilla extends to a name-tagged animal.
+     *
+     * <p><b>Deliberately on this base and not on {@link SMOPAnimal}.</b> The land animals inherit the
+     * same immortality and the same ratchet — it is visible in any spawn debug session as the CREATURE
+     * count climbing into the hundreds — but "wild animals persist" is vanilla's own convention for
+     * livestock and players build around it. Making a cow-shaped mob evaporate is a design decision;
+     * making a wild fish do it is matching the fish next to it.
+     */
+    @Override
+    public boolean removeWhenFarAway(double distanceToClosestPlayer) {
+        return !this.isTame() && !this.hasCustomName();
     }
 
     @Override
@@ -241,8 +303,24 @@ public abstract class SMOPWaterAnimal extends GenderedSMOPAnimal {
     /** How far below itself a swimmer will look for a bed to lay on. */
     private static final int NEST_SEARCH_DEPTH = 6;
 
+    /**
+     * Whether this swimmer nests out of the water, the way a sea turtle does.
+     *
+     * <p>Being aquatic and spawning underwater are not the same fact, and the salmon happens to do
+     * both — which is why this base assumed it. A marine reptile hauls out to lay: it needs the LAND
+     * placement rules, air above a solid block, which is exactly what {@link SMOPAnimal#tryLayEgg}
+     * already implements and this class overrides away.
+     */
+    protected boolean nestsAshore() {
+        return false;
+    }
+
     @Override
     public @Nullable BlockPos tryLayEgg(@NotNull Block eggBlock) {
+        // Straight back to the land algorithm, hooks and all, for the species that nest ashore.
+        if (this.nestsAshore()) {
+            return super.tryLayEgg(eggBlock);
+        }
         if (!this.hasEgg() || this.isMammal()) {
             return null;
         }
@@ -253,7 +331,14 @@ public abstract class SMOPWaterAnimal extends GenderedSMOPAnimal {
         }
 
         Level level = this.level();
-        level.setBlock(nest, eggBlock.defaultBlockState(), Block.UPDATE_ALL);
+        // Laid INSIDE a water source, so the block has to be told it is under water — otherwise it
+        // displaces the source and leaves an air pocket on the sea bed. A block that does not know
+        // about waterlogging goes down as-is; that is the caller's choice of block, not our problem.
+        BlockState egg = eggBlock.defaultBlockState();
+        if (egg.hasProperty(BlockStateProperties.WATERLOGGED)) {
+            egg = egg.setValue(BlockStateProperties.WATERLOGGED, true);
+        }
+        level.setBlock(nest, egg, Block.UPDATE_ALL);
         level.playSound(null, nest, SoundEvents.TURTLE_LAY_EGG, SoundSource.BLOCKS, 1.0F, 1.0F);
         this.setHasEgg(false);
         return nest;

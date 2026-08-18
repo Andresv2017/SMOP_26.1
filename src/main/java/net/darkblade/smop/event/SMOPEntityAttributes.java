@@ -2,6 +2,7 @@ package net.darkblade.smop.event;
 
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.SMOPEntities;
+import net.darkblade.smop.entity.SMOPSpawnPlacementTypes;
 import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
 import net.darkblade.smop.entity.niras.NirasmosaurusEntity;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
@@ -59,11 +60,17 @@ public final class SMOPEntityAttributes {
                 HellHippoEntity::checkHellHippoSpawnRules,
                 RegisterSpawnPlacementsEvent.Operation.REPLACE);
 
-        // IN_WATER, unlike the hippo above: this one is a water animal that hauls out, so the water
-        // is where it should first appear. Its own rule still accepts a shoreline block, which is
-        // what lets one show up basking instead of always submerged.
+        // A custom type rather than one of vanilla's, because this animal wants both: the ocean is
+        // where the population lives and the beach is where it is worth seeing one out of the water.
+        //
+        // Plain IN_WATER was the wrong half. The placement type runs BEFORE the entity's own rule
+        // (NaturalSpawner#isValidSpawnPostitionForType calls isSpawnPositionOk, then checkSpawnRules),
+        // so IN_WATER rejected every dry position and the onShore branch of checkNirasSpawnRules was
+        // dead code — which is why no Nirasmosaurus was ever seen in a beach biome despite the biome
+        // being listed in SMOPSpawns. See SMOPSpawnPlacementTypes for what the type accepts and why it
+        // leaves adjustSpawnPosition alone.
         event.register(SMOPEntities.NIRASMOSAURUS.get(),
-                SpawnPlacementTypes.IN_WATER,
+                SMOPSpawnPlacementTypes.IN_WATER_OR_ON_SHORE,
                 Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
                 NirasmosaurusEntity::checkNirasSpawnRules,
                 RegisterSpawnPlacementsEvent.Operation.REPLACE);

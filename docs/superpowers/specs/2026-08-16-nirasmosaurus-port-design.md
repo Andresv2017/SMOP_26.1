@@ -51,12 +51,30 @@ El legacy extiende un `WaterEntity` propio que no vamos a traer. En 26.1 hay dos
   resolver lo anfibio: `AmphibiousPathNavigation`, `canBreatheUnderwater`, `getFluidJumpThreshold` al
   máximo y un `travel()` que da propulsión real en vez del 0.02 fijo de vanilla.
 
-**Decisión: `GenderedSMOPAnimal`**, con el kit anfibio del Hell Hippo y tomando de `SMOPWaterAnimal`
-solo la mitad de travesía acuática. El hippo es un animal terrestre que entra al agua; el Niras es lo
-inverso, un animal acuático que sale a tierra. La misma maquinaria sirve para los dos con los
-umbrales invertidos, y ninguno de los dos quiere el coleteo.
+**Decisión original: `GenderedSMOPAnimal`.** Revertida durante 1a — lo implementado es
+`SMOPWaterAnimal`, y la razón por la que se descartó era falsa.
 
-Que sea `Gendered` no es opcional: hay `niras_male` y `niras_female` con sus variantes de silla.
+El argumento era que esta base «arrastra el coleteo del pez varado». No lo arrastra:
+`shouldFlopOnLand()` es un hook de opt-out cuyo propio javadoc dice *«anything that can walk turns
+this off»*, y está justo al lado de otro que dice *«amphibians turn this off»*. La base se escribió
+contemplando exactamente este caso. Bastan dos overrides.
+
+Reconstruirlo a mano costaba más que esos dos overrides, y además omitía en silencio tres cosas que
+esta clase no tenía por qué perder: el malus de pathfinding en agua —sin el cual el navegador trata
+el agua como peligro y el animal no nada a ningún sitio—, `isPushedByFluid`, y el flag de nado rápido
+**sincronizado**: las play conditions corren en los dos lados y `getDeltaMovement()` no se sincroniza
+para mobs, así que leer la velocidad directamente descuadra el clip.
+
+**Y `AmphibiousPathNavigation` tampoco valía.** Parecía la respuesta obvia y no lo era: sirve a
+tortugas y ajolotes, que viajan pegados a superficies en vez de por agua abierta, y con ella el animal
+se quedaba clavado donde lo spawneabas. La solución es de vanilla, tomada del Drowned: tener **dos**
+navegadores y **dos** move controls, e intercambiarlos al entrar y salir del agua.
+
+Lo que sí se sostuvo del análisis original: el hippo es un animal terrestre que entra al agua y el
+Niras es lo inverso. Solo que eso no obligaba a heredar del hippo.
+
+Que sea `Gendered` no es opcional —hay `niras_male` y `niras_female` con sus variantes de silla— y no
+se pierde nada: `SMOPWaterAnimal` ya extiende `GenderedSMOPAnimal`.
 
 ## Hitboxes multiparte: se aplaza, y a propósito
 
@@ -104,6 +122,14 @@ port del hippo. Las duraciones se leen del `withLength` de cada clip, no se esti
 Locomoción anfibia: nada y camina, con el reparto agua/tierra por condición de reproducción.
 
 *Verificación:* nada, sale a tierra, camina, y ninguna animación revienta.
+
+**Estado: cerrada.** Spawn en beach + ocean/lukewarm/warm a peso 3 y manada de 1 (el legacy pedía 20
+y 1-2; el 20 habría hecho al reptil más común que las tortugas en la playa). Botín de carne 1-2 más
+pico 0-1 — el legacy **no tenía tabla**, así que los tres items eran inobtenibles en survival. Ambos
+ficheros verificados en la salida de `runDataServer`, no solo en compilación.
+
+Lo que costó de verdad no estaba en la lista: la locomoción en agua. Ver el bloque de herencia arriba,
+y `SwimSteerControl` / `SwimWanderGoal`, que salieron de aquí y acabaron sirviendo también al salmón.
 
 ### 1b · Vida propia
 

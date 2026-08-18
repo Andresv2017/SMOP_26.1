@@ -73,6 +73,40 @@ public final class SMOPSpawns {
                 .biomes(Biomes.SAVANNA, Biomes.SAVANNA_PLATEAU, Biomes.WINDSWEPT_SAVANNA,
                         Biomes.SWAMP, Biomes.MANGROVE_SWAMP)
                 .submit();
+
+        // The four biomes 1.20.1 chose, kept as they are: warm and temperate open water plus the beach
+        // it hauls out onto. Cold and deep oceans are absent on purpose in the legacy, and that reads as
+        // a deliberate range for the animal rather than an omission — a basking reptile belongs in warm
+        // shallows.
+        //
+        // The beach entry was inert until the placement type was widened — see SMOPSpawnPlacementTypes.
+        // Worth knowing what it buys: minecraft:beach is the strip of SAND, not the water beside it
+        // (that is ocean biome), and vanilla's beach.json carries no water entries at all for exactly
+        // that reason. So this entry only ever produces hauled-out animals, via the periodic cycle
+        // landing its Y roll on the sand.
+        //
+        // WATER_CREATURE, not CREATURE — see SMOPEntities for the measurements, which are the whole
+        // story. The short version is that CREATURE's cap is a global land-animal budget that is
+        // permanently three to eight times over and never recovers, so the animal simply never spawned
+        // at sea.
+        //
+        // Weight 8, up from 3, and the number is set against the pool it actually shares rather than
+        // carried over. Warm ocean's WATER_CREATURE pool is squid 10, nautilus 5, dolphin 2; adding 8
+        // makes 25 and takes just under a third of the rolls. Three would have taken an eighth, and an
+        // eighth is too thin here for a reason the CREATURE pool never had: the squid entry is 4-4, so
+        // one squid roll consumes four of the five slots in the category cap and the next opening is a
+        // while coming. The weight has to buy its way past that, not just past the other animals.
+        //
+        // Pack 1-2, as the legacy had it, and the group is always a horizontal cluster at ONE depth:
+        // spawnCategoryForPosition reads yStart once, outside both loops, and only jitters x and z by
+        // plus-or-minus six per member. So pack size buys width, never depth — the depth spread comes
+        // from separate spawn events, each of which draws its own Y. Two is also the real ceiling only
+        // because NirasmosaurusEntity#getMaxSpawnClusterSize says so; the outer loop would otherwise
+        // run this entry three times over for up to four animals.
+        DeluxeBiomeSpawns.builder(SMOPEntities.NIRASMOSAURUS::get, MobCategory.WATER_CREATURE)
+                .spawnRate(8, 1, 2)
+                .biomes(Biomes.BEACH, Biomes.OCEAN, Biomes.LUKEWARM_OCEAN, Biomes.WARM_OCEAN)
+                .submit();
     }
 
     private SMOPSpawns() {}
