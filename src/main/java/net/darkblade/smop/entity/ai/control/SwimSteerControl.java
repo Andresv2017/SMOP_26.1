@@ -67,8 +67,23 @@ public class SwimSteerControl extends MoveControl {
      * <p>Six. Four cleared the engine's floor but left the climbs so gentle that the body tilt fed
      * from them stayed near zero; this makes a change of depth read as a decision without making a
      * dive faster than the swim itself.
+     *
+     * <p><b>But it is settable, because that last clause turned out to be a lie once anyone drew the
+     * tilt.</b> {@code travel} feeds {@code zza}/{@code yya} through {@code moveRelative}, which
+     * NORMALISES the input vector — so the gain does not add vertical speed on top of the forward
+     * speed, it shifts the balance BETWEEN them. At six, {@code (cos p, 6 sin p)} is mostly vertical
+     * for any pitch worth having: a tick sample of the salmon reads {@code dY} of −0.098 against a
+     * horizontal speed near 0.065, which is a dive steeper than 55 degrees. Nothing looks wrong while
+     * the model stays level; the moment the body is pitched along its own trajectory, the animal is
+     * visibly standing on its tail.
+     *
+     * <p>A gain of 1 would mean the animal swims exactly where it points, which is the honest
+     * relationship — the gain only exists to clear the engine's floor on a slow mover. Anything faster
+     * wants far less than six. @see #verticalGain
      */
-    private static final float VERTICAL_GAIN = 6.0F;
+    private static final float DEFAULT_VERTICAL_GAIN = 6.0F;
+
+    private float verticalGain = DEFAULT_VERTICAL_GAIN;
 
     /**
      * Swim inclination, held here instead of on the entity.
@@ -136,6 +151,12 @@ public class SwimSteerControl extends MoveControl {
         this.speedScale = speedScale;
     }
 
+    /** Balance between vertical and forward drive. @see #DEFAULT_VERTICAL_GAIN */
+    public SwimSteerControl verticalGain(float gain) {
+        this.verticalGain = gain;
+        return this;
+    }
+
     /** Ticks the turn takes to wind up and to wind down. @see #DEFAULT_RAMP_TICKS */
     public SwimSteerControl rampTicks(float ticks) {
         this.rampTicks = ticks;
@@ -195,7 +216,7 @@ public class SwimSteerControl extends MoveControl {
         // body axis rather than sliding sideways through the water.
         float pitchRad = this.pitch * DEG_TO_RAD;
         this.mob.zza = Mth.cos(pitchRad) * drive;
-        this.mob.yya = -Mth.sin(pitchRad) * drive * VERTICAL_GAIN;
+        this.mob.yya = -Mth.sin(pitchRad) * drive * this.verticalGain;
     }
 
     /**

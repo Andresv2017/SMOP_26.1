@@ -10,6 +10,7 @@ import net.darkblade.smop.SMOP;
 import net.darkblade.smop.block.SMOPBlocks;
 import net.darkblade.smop.client.salmon.SalmonAnimations;
 import net.darkblade.smop.entity.SMOPWaterAnimal;
+import net.darkblade.smop.entity.SwimTilt;
 import net.darkblade.smop.entity.ai.control.SwimSteerControl;
 import net.darkblade.smop.entity.ai.goal.SwimWanderGoal;
 import net.darkblade.smop.entity.ai.navigation.SmartSwimmingNavigation;
@@ -24,6 +25,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.InteractionHand;
@@ -59,7 +61,7 @@ import java.util.function.Predicate;
  * <p>Hand it a pufferfish and it goes looking for sand, gravel, mud or dirt to root through; breed
  * it with cod and it spawns roe on the river floor.
  */
-public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluator, ISleepAwareness {
+public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluator, ISleepAwareness, SwimTilt {
 
     // ───────────────────────────────────────────────────── TUNING ─────
 
@@ -81,6 +83,20 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
     private static final float SWIM_PITCH_SPEED = 6.0F;
     private static final float SWIM_SPEED_SCALE = 0.02F;
     private static final float SWIM_RAMP_TICKS = 5.0F;
+
+    /**
+     * Vertical-to-forward drive balance, down from the control's default of 6.
+     *
+     * <p>Measured, not guessed. {@code moveRelative} normalises the drive vector, so the gain decides
+     * what FRACTION of the motion is vertical rather than adding to it. At 6 the tick samples show this
+     * animal reaching {@code dY} of −0.098 against a horizontal speed near 0.065 — it was descending
+     * faster than it swam forward, a dive past 55 degrees. Invisible while the model rendered level;
+     * absurd the moment the body followed the trajectory.
+     *
+     * <p>Two keeps depth changes decisive while leaving the steepest of them inside the tilt clamp, so
+     * the body can express the whole angle instead of parking against the stop.
+     */
+    private static final float SWIM_VERTICAL_GAIN = 2.0F;
 
     /**
      * Pure-pursuit lookahead, in blocks. Three, against the Nirasmosaurus's seven: the aim point has to
@@ -129,7 +145,8 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         this.setOutOfWaterDamage(2.0F);
         this.moveControl = new SwimSteerControl(
                 this, SWIM_TURN_SPEED, SWIM_MAX_PITCH, SWIM_PITCH_SPEED, SWIM_SPEED_SCALE)
-                .rampTicks(SWIM_RAMP_TICKS);
+                .rampTicks(SWIM_RAMP_TICKS)
+                .verticalGain(SWIM_VERTICAL_GAIN);
     }
 
     /**
@@ -287,9 +304,146 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
     @Override
     public void tick() {
         super.tick();
+        // Both sides: the tilt is drawn, and the client cannot recompute it from synced velocity.
+        this.tickSwimTilt();
         if (!this.level().isClientSide() && this.digCommandCooldown > 0) {
             this.digCommandCooldown--;
         }
+    }
+
+
+    // ───────────────────────────────────────────────────── VISUAL TILT ─────
+
+    /** Nose up/down and bank, for the renderer. Interpolated against the prev pair. */
+    public float swimPitch;
+    public float prevSwimPitch;
+    public float swimRoll;
+    public float prevSwimRoll;
+
+    @Override
+    public float swimPitch() {
+        return this.swimPitch;
+    }
+
+    @Override
+    public float swimRoll() {
+        return this.swimRoll;
+    }
+
+    /**
+     * How far the body may nose up or down, and how far it may bank.
+     *
+     * <p>Both above the Nirasmosaurus's 30 and 35. That animal is three blocks long, so the same angle
+     * sweeps far more silhouette and it has to be reined in; a salmon is a hand-span of fish and can
+     * throw itself around. 45 is roughly the steepest climb the tick samples show it actually making.
+     */
+    private static final float MAX_TILT_PITCH = 45.0F;
+    private static final float MAX_TILT_ROLL = 25.0F;
+
+    /**
+     * Below this vertical speed the body stays level.
+     *
+     * <p>Six thousandths, and the number is not arbitrary: {@code SMOPWaterAnimal#travel} adds exactly
+     * {@code -0.005} per tick whenever the mob has no target, so an idling swimmer is always sinking a
+     * little. Without a threshold above that, a fish hanging in the water would hold a permanent
+     * four-degree droop — the tick samples show {@code dY} parked at exactly {@code -0.0050} through
+     * whole idle stretches, which is that trim and nothing else.
+     */
+    private static final float TILT_DEAD_ZONE = 0.006F;
+
+    /** Bank per degree of yaw per tick. @see #tickSwimTilt */
+    private static final float ROLL_GAIN = 4.5F;
+
+    /** Horizontal speed at which the bank reaches full strength. */
+    private static final double ROLL_FULL_SPEED = 15.0D;
+
+    /**
+     * How fast the drawn tilt chases its target. Quicker than the Nirasmosaurus's 0.06 — a fish.
+     *
+     * <p><b>One smoothing stage, not two.</b> The first version smoothed the vertical speed AND then
+     * smoothed the resulting angle, and two lerps in series add their lags: a tick sample caught the
+     * body pitched {@code +41.6} nose-up while {@code dY} had already gone to {@code −0.0036}, i.e.
+     * fully committed to a climb it had stopped making about a second earlier. The angle is what gets
+     * drawn, so the angle is the only thing worth filtering.
+     *
+     * <p><b>But dropping the input stage is what made it read as jerky</b>, and the input stage was not
+     * the reason. The lerp on the vertical speed had been hiding the hard edge of
+     * {@link #TILT_DEAD_ZONE}: with it gone, a sample shows {@code swimPitch} sitting at {@code -0.000}
+     * for entire stretches and then jumping to {@code 1.503} on the single tick {@code dY} crossed from
+     * {@code 0.0058} to {@code 0.0083}. Softening the knee fixes the step at its source, so this can
+     * stay a single stage — and 0.15 rather than 0.2, since there is no longer a second filter's worth
+     * of smoothing to make up for.
+     */
+    private static final float TILT_SMOOTHING = 0.15F;
+
+    /**
+     * Pitch and roll, recomputed on <b>both</b> sides from different inputs.
+     *
+     * <p>{@code deltaMovement} is not synced for mobs, so a client running the server's formula would
+     * read roughly zero and render the fish rigidly level. The server reads its own velocity; the
+     * client reads the per-tick position delta it interpolates anyway.
+     *
+     * <p><b>The pitch is the trajectory angle, not a gain on the vertical speed.</b> The Nirasmosaurus
+     * multiplies by 300 and clamps, a constant found by trial; that number is only right for one
+     * animal's range of speeds, and this one is four times quicker vertically — the samples reach
+     * {@code dY} of −0.093 against that animal's 0.024, so the same gain would peg the clamp and hold
+     * it there through every descent. {@code atan2(vertical, horizontal)} is the angle the fish is
+     * genuinely travelling along, so it needs no constant: a level cruise gives a couple of degrees and
+     * a real dive gives a real angle.
+     *
+     * <p><b>It can still saturate, and it did.</b> "Cannot saturate wrongly" was too strong — the
+     * formula was right and the trajectory was the problem: samples had it pinned within a degree of
+     * the 45 clamp for twenty-five ticks at a stretch, because the animal really was diving at 57. That
+     * is fixed at the source, in {@link #SWIM_VERTICAL_GAIN}, not by widening the clamp.
+     */
+    private void tickSwimTilt() {
+        this.prevSwimPitch = this.swimPitch;
+        this.prevSwimRoll = this.swimRoll;
+
+        // The authored death clips own the corpse pose, and a beached fish has the flop; levelling out
+        // keeps this from fighting either.
+        if (!this.isInWater() || this.isDeadOrDying()) {
+            this.swimPitch = Mth.lerp(0.1F, this.swimPitch, 0.0F);
+            this.swimRoll = Mth.lerp(0.1F, this.swimRoll, 0.0F);
+            return;
+        }
+
+        boolean client = this.level().isClientSide();
+        float vertical = client ? (float) (this.getY() - this.yo) : (float) this.getDeltaMovement().y;
+        double horizontal = client
+                ? Math.hypot(this.getX() - this.xo, this.getZ() - this.zo)
+                : this.getDeltaMovement().horizontalDistance();
+
+        // SOFT knee, not a hard cut. Zeroing anything under the threshold makes the angle jump the
+        // moment the threshold is crossed: below it the target is 0, above it it is already
+        // atan(0.006 / 0.065) — five degrees appearing from nothing. Subtracting the threshold instead
+        // passes through zero continuously, which kills the buoyancy trim just as dead without the step.
+        vertical = Math.signum(vertical) * Math.max(0.0F, Math.abs(vertical) - TILT_DEAD_ZONE);
+
+        // Sign convention copied from the Nirasmosaurus, NOT re-derived: there, a POSITIVE vertical
+        // speed produces a positive swimPitch, and the renderer feeds that straight into
+        // Axis.XP.rotationDegrees. That animal's tilt has been watched in-game across many samples and
+        // reads correctly, which makes it the ground truth; inverting it here would have nosed the fish
+        // down as it climbed.
+        float trajectory = (float) Math.toDegrees(
+                Mth.atan2(vertical, Math.max(horizontal, 1.0E-4D)));
+        float targetPitch = Mth.clamp(trajectory, -MAX_TILT_PITCH, MAX_TILT_PITCH);
+        this.swimPitch = Mth.lerp(TILT_SMOOTHING, this.swimPitch, targetPitch);
+
+        // Bank out of the yaw RATE, not the yaw: a steady heading must not hold the fish leaning.
+        float yawDelta = Mth.wrapDegrees(this.getYRot() - this.yRotO);
+        if (Math.abs(yawDelta) < 0.3F) {
+            yawDelta = 0.0F;
+        }
+        // No speed, no bank — something turning on the spot is not carving a curve. The multiplier is
+        // 15 against the Nirasmosaurus's 6 because this animal cruises at about 0.065 blocks a tick,
+        // and at 6 that would scale every bank down to a third before it was ever drawn.
+        float speedFactor = (float) Math.min(1.0D, horizontal * ROLL_FULL_SPEED);
+        // 4.5, scaled from that animal's 12 by the ratio of the turn caps (2.2 against 6): the gain
+        // converts degrees of yaw per tick into degrees of lean, so a mob that turns three times
+        // faster needs a third of the gain to lean by the same amount.
+        float targetRoll = Mth.clamp(-yawDelta * ROLL_GAIN * speedFactor, -MAX_TILT_ROLL, MAX_TILT_ROLL);
+        this.swimRoll = Mth.lerp(TILT_SMOOTHING, this.swimRoll, targetRoll);
     }
 
     // ───────────────────────────────────────────────────── DIGGING ─────

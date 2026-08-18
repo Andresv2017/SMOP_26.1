@@ -117,7 +117,18 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt {
         // covers the longest leg with margin, and the setter also grows the visited-node budget.
         this.waterNavigation.setRequiredPathLength(40.0F);
         this.groundNavigation = new GroundPathNavigation(this, level);
-        this.swimControl = new SwimSteerControl(this, 2.2F, 45.0F, 4.0F, 0.01F);
+        this.swimControl = new SwimSteerControl(this, 2.2F, 45.0F, 4.0F, 0.01F)
+                // 2, down from the control's default of 6. moveRelative NORMALISES the drive vector, so
+                // the gain sets what fraction of the motion is vertical rather than adding to it: at 6
+                // this animal descended faster than it swam forward, which the salmon's samples caught
+                // as dives past 55 degrees. It was invisible while the tilt came from a linear gain on
+                // the vertical speed; the moment the body follows its true trajectory it is not.
+                //
+                // Six was originally chosen because at 4 "the climbs were so gentle that the body tilt
+                // stayed near zero" — but that was under the old formula, where a small vertical speed
+                // produced a small angle no matter how steep the path actually was. The trajectory
+                // angle has no such problem, so the gain is free to be honest now.
+                .verticalGain(2.0F);
         this.moveControl = this.swimControl;
         // DirectionalMoveControl on land only, and deliberately NOT in water. It caps the turn rate
         // so a three-block-long body has to commit to a turn instead of snapping to face each
@@ -244,8 +255,6 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt {
     public float swimRoll() {
         return this.swimRoll;
     }
-    private float smoothedVerticalSpeed;
-
     /**
      * How far the body may nose up or down, and how far it may bank.
      *
@@ -257,6 +266,12 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt {
      */
     private static final float MAX_SWIM_PITCH = 30.0F;
     private static final float MAX_SWIM_ROLL = 35.0F;
+
+    /** Vertical speed below which the body stays level. @see #tickSwimTilt */
+    private static final float TILT_DEAD_ZONE = 0.006F;
+
+    /** How fast the drawn tilt chases its target. Slower than the salmon's 0.15 — more animal. */
+    private static final float TILT_SMOOTHING = 0.06F;
 
     /**
      * Pitch and roll, recomputed on <b>both</b> sides from different inputs.
@@ -275,37 +290,48 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt {
             // fighting it, and on land there is nothing to bank into.
             this.swimPitch = Mth.lerp(0.1F, this.swimPitch, 0.0F);
             this.swimRoll = Mth.lerp(0.1F, this.swimRoll, 0.0F);
-            this.smoothedVerticalSpeed = 0.0F;
             return;
         }
 
-        float vertical = this.level().isClientSide()
-                ? (float) (this.getY() - this.yo)
-                : (float) this.getDeltaMovement().y;
-        // 0.002, not the flier's 0.01. That threshold exists to stop numerical noise holding a tilt,
-        // but a swimmer's vertical speeds are an order of magnitude below a flier's: tick samples put
-        // this animal between 0.005 and 0.024 when actually climbing, and at a terminal -0.005 when
-        // level. At 0.01 it therefore discarded most of the real signal along with the noise, and
-        // swimPitch read a flat 0.000 through entire samples.
-        if (Math.abs(vertical) < 0.002F) {
-            vertical = 0.0F;
-        }
-        this.smoothedVerticalSpeed = Mth.lerp(0.08F, this.smoothedVerticalSpeed, vertical);
-        // 300, not the flier's 100. A tick sample had this peaking at 1.7 degrees out of the 30 it is
-        // allowed, because a swimmer's vertical speed is a fraction of a flier's — so the body barely
-        // tilted and what little pitch was visible came from the neck instead. The clamp still bounds
-        // it; this only decides how quickly it gets there.
-        float targetPitch = Mth.clamp(this.smoothedVerticalSpeed * 300.0F, -MAX_SWIM_PITCH, MAX_SWIM_PITCH);
-        this.swimPitch = Mth.lerp(0.06F, this.swimPitch, targetPitch);
+        boolean client = this.level().isClientSide();
+        float vertical = client ? (float) (this.getY() - this.yo) : (float) this.getDeltaMovement().y;
+        double horizontal = client
+                ? Math.hypot(this.getX() - this.xo, this.getZ() - this.zo)
+                : this.getDeltaMovement().horizontalDistance();
+
+        // SOFT knee at 0.006, replacing a hard cut at 0.002. Two separate faults were fixed here, both
+        // found on the salmon and both present in the version this replaces:
+        //
+        // The threshold has to clear the buoyancy trim. SwimSteerControl adds exactly 0.005 a tick and
+        // SMOPWaterAnimal#travel takes 0.005 back off when there is no target, so an idling swimmer
+        // always reads about -0.005 vertically. At 0.002 that drift counted as real and held the body
+        // permanently nose-down; the tick samples show dY parked at exactly -0.0050 for whole stretches.
+        //
+        // And zeroing below a threshold makes the drawn angle JUMP the tick the threshold is crossed —
+        // atan(0.006 / horizontal) appearing out of nothing. Subtracting the threshold instead passes
+        // through zero continuously, which is what the salmon needed to stop reading as jerky.
+        vertical = Math.signum(vertical) * Math.max(0.0F, Math.abs(vertical) - TILT_DEAD_ZONE);
+
+        // The trajectory angle, not a gain on the vertical speed. The 300 this replaces was found by
+        // trial and is only right for one range of speeds: it was chosen when the animal barely moved
+        // vertically, and once the vertical drive was working it pegged the clamp instead. atan2 needs
+        // no constant and cannot be wrong about the angle — if it saturates, the SWIMMING is too steep
+        // and verticalGain is the number to look at, not this.
+        float targetPitch = Mth.clamp(
+                (float) Math.toDegrees(Mth.atan2(vertical, Math.max(horizontal, 1.0E-4D))),
+                -MAX_SWIM_PITCH, MAX_SWIM_PITCH);
+        // ONE smoothing stage. This used to lerp the vertical speed and then lerp the angle, and two
+        // filters in series add their lags — on the salmon that put the body 42 degrees nose-up while
+        // it had already been sinking for about a second. The angle is what gets drawn, so the angle is
+        // the only thing worth filtering; 0.06 stands alone here rather than 0.15, because three blocks
+        // of animal should take longer to settle than a hand-span of fish.
+        this.swimPitch = Mth.lerp(TILT_SMOOTHING, this.swimPitch, targetPitch);
 
         // Bank out of the yaw RATE, not the yaw: a steady heading must not hold the animal leaning.
         float yawDelta = Mth.wrapDegrees(this.getYRot() - this.yRotO);
         if (Math.abs(yawDelta) < 0.3F) {
             yawDelta = 0.0F;
         }
-        double horizontal = this.level().isClientSide()
-                ? Math.hypot(this.getX() - this.xo, this.getZ() - this.zo)
-                : this.getDeltaMovement().horizontalDistance();
         // No speed, no bank — an animal turning on the spot is not carving a curve.
         float speedFactor = (float) Math.min(1.0D, horizontal * 6.0D);
         // 12 rather than the flier's 4: the swim turn cap is 2.2 degrees a tick against flight's much

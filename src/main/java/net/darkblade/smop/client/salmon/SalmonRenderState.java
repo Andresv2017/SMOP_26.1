@@ -12,4 +12,8 @@ import net.darkblade.deluxelib.client.render.DeluxeEntityRenderState;
 public class SalmonRenderState extends DeluxeEntityRenderState {
 
     public boolean male;
+
+    /** Body tilt in degrees, already interpolated against the previous tick. @see SalmonRenderer */
+    public float swimPitch;
+    public float swimRoll;
 }
