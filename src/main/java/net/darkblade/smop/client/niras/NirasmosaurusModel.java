@@ -35,6 +35,13 @@ public class NirasmosaurusModel extends EntityModel<DeluxeEntityRenderState> {
             Rig.<NirasmosaurusModel>builder()
                     .resetPoses()
                     .keyframeBlend(220L, 0)
+                    // Layer 1: the water bite, cut down to the gNeck subtree. Applied after layer 0
+                    // so it composites additively on top of whatever swim clip is current instead of
+                    // replacing it — which is what a same-layer clip does, and it would drop every
+                    // bone the clip does not author back to the bind pose. That is precisely what a
+                    // biting Nirasmosaurus looked like in the water: the neck struck and the rest of
+                    // the animal went still for the length of the clip.
+                    .keyframeBlend(80L, 1)
                     .lookAt(m -> m.gNeck, 35.0F, 30.0F)
                     .build();
 

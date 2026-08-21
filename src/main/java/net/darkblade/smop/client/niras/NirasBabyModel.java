@@ -34,6 +34,11 @@ public class NirasBabyModel extends EntityModel<DeluxeEntityRenderState> {
             Rig.<NirasBabyModel>builder()
                     .resetPoses()
                     .keyframeBlend(220L, 0)
+                    // Layer 1: the water bite overlay. @see NirasmosaurusModel — the calf needs the
+                    // same second layer even though it never bites in 1c, because the clip is
+                    // registered with an AnimSource that switches by age and the layer belongs to the
+                    // rig, not to the animation.
+                    .keyframeBlend(80L, 1)
                     .lookAt(m -> m.gNeck, 35.0F, 30.0F)
                     .build();
 

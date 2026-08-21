@@ -1,6 +1,7 @@
 package net.darkblade.smop.entity.ai.control;
 
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.MoveControl;
@@ -133,6 +134,24 @@ public class SwimSteerControl extends MoveControl {
     private float rampTicks = DEFAULT_RAMP_TICKS;
 
     private final float turnSpeed;
+
+    /**
+     * Turn rate while the mob is fighting. Zero means "same as cruise", which is the default and what
+     * every existing user gets.
+     *
+     * <p><b>Why a cruising rate cannot also be a combat rate.</b> {@link #turnSpeed} is chosen for
+     * how a body of a given length should look moving through open water, and on the Nirasmosaurus
+     * that is 2.2 degrees a tick — deliberately stately, because a three-block animal snapping to face
+     * each waypoint reads as a puppet. A chase asks the opposite question: the target moves, so the
+     * heading demand changes constantly, and at 2.2 a ninety-degree correction costs 41 ticks plus
+     * two ramps. The animal is then permanently behind its own target, which looks like a slow chase
+     * and lands its bite pointing somewhere the prey is not.
+     *
+     * <p>{@code DirectionalMoveControl} — the land equivalent, and the reason pursuit ashore already
+     * felt right — has had exactly this knob from the start ({@code setCombatTurnSpeed}). This is that
+     * idea in the water, down to reading the same two flags.
+     */
+    private float combatTurnSpeed;
     private final float maxPitch;
     private final float pitchSpeed;
     private final float speedScale;
@@ -163,6 +182,38 @@ public class SwimSteerControl extends MoveControl {
         return this;
     }
 
+    /**
+     * Body yaw degrees per tick while fighting. Opt-in: leave it unset and the control behaves
+     * exactly as before. @see #combatTurnSpeed
+     */
+    public SwimSteerControl combatTurnSpeed(float degreesPerTick) {
+        this.combatTurnSpeed = degreesPerTick;
+        return this;
+    }
+
+    /**
+     * The rate in force this tick.
+     *
+     * <p>Reads BOTH {@code isAggressive()} and a live target, the same pair {@code
+     * DirectionalMoveControl} reads, and for the same reason it gives there: the aggressive flag is
+     * raised by {@code MeleeAttackGoal#start} and dropped by {@code #stop}, so it covers the swing
+     * but goes false in the gaps between goals re-acquiring — while a target that is still alive
+     * means the animal is still in a fight whatever the flag says. Either one is enough.
+     *
+     * <p>The ramp is derived from whichever rate is in force ({@code cap / rampTicks}), so entering
+     * combat does not teleport the turn rate: it just raises the ceiling the ramp climbs toward.
+     */
+    private float effectiveTurnSpeed() {
+        if (this.combatTurnSpeed <= 0.0F) {
+            return this.turnSpeed;
+        }
+        if (this.mob.isAggressive()) {
+            return this.combatTurnSpeed;
+        }
+        LivingEntity target = this.mob.getTarget();
+        return target != null && target.isAlive() ? this.combatTurnSpeed : this.turnSpeed;
+    }
+
     @Override
     public void tick() {
         if (this.mob.isInWater()) {
@@ -171,7 +222,7 @@ public class SwimSteerControl extends MoveControl {
         if (this.operation != Operation.MOVE_TO || this.mob.getNavigation().isDone()) {
             // Bleed the turn off rather than dropping it: an idle tick between two legs must not
             // discard the ramp and make the next one start from a standstill.
-            this.yawRate = Mth.approach(this.yawRate, 0.0F, this.turnSpeed / this.rampTicks);
+            this.yawRate = Mth.approach(this.yawRate, 0.0F, this.effectiveTurnSpeed() / this.rampTicks);
             this.mob.setSpeed(0.0F);
             this.mob.setXxa(0.0F);
             this.mob.setYya(0.0F);
@@ -183,7 +234,7 @@ public class SwimSteerControl extends MoveControl {
         double dy = this.wantedY - this.mob.getY();
         double dz = this.wantedZ - this.mob.getZ();
         if (dx * dx + dy * dy + dz * dz < ARRIVED_SQR) {
-            this.yawRate = Mth.approach(this.yawRate, 0.0F, this.turnSpeed / this.rampTicks);
+            this.yawRate = Mth.approach(this.yawRate, 0.0F, this.effectiveTurnSpeed() / this.rampTicks);
             this.mob.setZza(0.0F);
             return;
         }
@@ -254,8 +305,9 @@ public class SwimSteerControl extends MoveControl {
      * enough that the minimum turning radius would otherwise trap the animal in a circle around it.
      */
     private float adaptiveTurn(double distance) {
+        float base = this.effectiveTurnSpeed();
         if (distance < 1.0E-4D) {
-            return this.turnSpeed;
+            return base;
         }
         // The real horizontal velocity, NOT getSpeed(). Two things were wrong with reading the field:
         // it holds the value setSpeed() was last given, which is the SCALED one (drive x 0.01), so
@@ -266,7 +318,7 @@ public class SwimSteerControl extends MoveControl {
         // depends on how fast the body is actually travelling through the water, so ask the body.
         double speed = this.mob.getDeltaMovement().horizontalDistance();
         float needed = (float) Math.toDegrees(speed / distance) * ORBIT_MARGIN;
-        return Math.max(this.turnSpeed, Math.min(needed, ADAPTIVE_TURN_CAP));
+        return Math.max(base, Math.min(needed, ADAPTIVE_TURN_CAP));
     }
 
     /** Full speed while roughly on course, easing down to {@link #MIN_TURN_SPEED} while hauling round. */

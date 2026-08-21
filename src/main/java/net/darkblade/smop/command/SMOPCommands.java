@@ -46,6 +46,7 @@ public final class SMOPCommands {
                 .then(SMOPSwimDebug.build())
                 .then(SMOPSpawnDebug.build())
                 .then(SMOPNestDebug.build())
+                .then(SMOPBiteDebug.build())
                 .then(SMOPDeathDebug.build()));
     }
 
