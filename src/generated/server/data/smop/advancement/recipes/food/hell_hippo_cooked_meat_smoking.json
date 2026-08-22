@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_hell_hippo_raw_meat": {
+      "conditions": {
+        "items": [
+          {
+            "items": "smop:hell_hippo_raw_meat"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "smop:hell_hippo_cooked_meat_smoking"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_hell_hippo_raw_meat"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "smop:hell_hippo_cooked_meat_smoking"
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:smithing_transform",
+  "addition": "minecraft:netherite_ingot",
+  "base": "minecraft:golden_horse_armor",
+  "result": {
+    "id": "smop:hellhippo_armor"
+  },
+  "template": "minecraft:netherite_upgrade_smithing_template"
+}

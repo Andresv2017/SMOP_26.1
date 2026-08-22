@@ -170,6 +170,16 @@ public final class SMOPItems {
                             .setDamageOnHurt(false)
                             .build())));
 
+    // ───────────────────────────────────────────────────── AMMUNITION ─────
+
+    /**
+     * Fletched with a Tangoftero feather. Loadable by any bow or crossbow through the
+     * {@code minecraft:arrows} item tag, which is where that permission lives — the class only
+     * decides what flies.
+     */
+    public static final DeferredItem<Item> TANGO_ARROW =
+            ITEMS.registerItem("tango_arrow", TangoArrowItem::new);
+
     // ───────────────────────────────────────────────────── SPAWN EGGS ─────
 
     /**
@@ -220,6 +230,9 @@ public final class SMOPItems {
 
                         // ARMOUR
                         output.accept(HELL_HIPPO_ARMOR.get());
+
+                        // AMMUNITION
+                        output.accept(TANGO_ARROW.get());
 
                         // MISC / MATERIALS
                         output.accept(NIRASMO_BEAK.get());

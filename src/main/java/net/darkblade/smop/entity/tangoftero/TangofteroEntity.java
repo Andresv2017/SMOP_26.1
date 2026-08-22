@@ -7,6 +7,7 @@ import net.darkblade.smop.block.SMOPBlocks;
 import net.darkblade.smop.client.tangoftero.TangoAnimations;
 import net.darkblade.smop.client.tangoftero.TangoBabyAnimations;
 import net.darkblade.smop.entity.SMOPAnimal;
+import net.darkblade.smop.entity.UndeadScatter;
 import net.darkblade.smop.entity.ai.goal.FollowOwnerBaseGoal;
 import net.darkblade.smop.entity.ai.goal.GenericBreedGoal;
 import net.darkblade.deluxelib.combat.AttackShape;
@@ -36,7 +37,6 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -62,7 +62,6 @@ import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -87,6 +86,8 @@ public class TangofteroEntity extends SMOPAnimal
     /** How far the roar reaches, and how far it throws the undead's pathing target. */
     private static final double SCARE_RADIUS = 10.0D;
     private static final double SCARE_FLEE_DISTANCE = 7.0D;
+    /** Navigation speed the scattered undead retreat at. */
+    private static final double SCARE_SPEED = 1.2D;
 
     private static final int BITE_COOLDOWN_TICKS = 20;
     private static final float HEAL_ROTTEN_FLESH = 6.0F;
@@ -503,22 +504,20 @@ public class TangofteroEntity extends SMOPAnimal
         this.animator().play(this.animator().getByName(ANIM_ROAR));
     }
 
-    /** Sends every nearby undead pathing away from this mob. */
+    /**
+     * Sends every nearby undead pathing away from this mob.
+     *
+     * <p>The loop itself now lives in {@link UndeadScatter}, because the tango arrow does the same
+     * thing with a shorter reach and the two were drifting copies waiting to happen. The numbers stay
+     * here — they are this animal's, not the helper's.
+     *
+     * <p>One deliberate change came with the extraction: the search volume is now a sphere-ish box
+     * around this mob's <em>position</em> rather than around its bounding box. On a 1x1 animal that
+     * moves the edge of the effect by half a block, which is well inside the slop of a 10-block panic.
+     */
     private void scareUndead() {
-        List<Mob> undead = this.level().getEntitiesOfClass(Mob.class,
-                this.getBoundingBox().inflate(SCARE_RADIUS),
-                mob -> mob.isAlive() && mob.is(EntityTypeTags.UNDEAD));
-
-        for (Mob mob : undead) {
-            double dx = mob.getX() - this.getX();
-            double dz = mob.getZ() - this.getZ();
-            double distance = Math.sqrt(dx * dx + dz * dz);
-            if (distance < 1.0E-4D) {
-                continue;
-            }
-            double scale = SCARE_FLEE_DISTANCE / distance;
-            mob.getNavigation().moveTo(mob.getX() + dx * scale, mob.getY(), mob.getZ() + dz * scale, 1.2D);
-        }
+        UndeadScatter.scatter(this.level(), this.position(),
+                SCARE_RADIUS, SCARE_FLEE_DISTANCE, SCARE_SPEED, this);
     }
 
     // ───────────────────────────────────────────────────── INTERACTION ─────

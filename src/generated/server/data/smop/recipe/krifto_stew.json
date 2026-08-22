@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:bowl",
+    "smop:cooked_krifto_meat",
+    "smop:krifto_wing",
+    "minecraft:carrot"
+  ],
+  "result": {
+    "id": "smop:krifto_stew"
+  }
+}

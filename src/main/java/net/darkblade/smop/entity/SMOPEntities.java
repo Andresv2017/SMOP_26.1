@@ -3,6 +3,7 @@ package net.darkblade.smop.entity;
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
 import net.darkblade.smop.entity.niras.NirasmosaurusEntity;
+import net.darkblade.smop.entity.projectile.TangoArrowEntity;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
 import net.darkblade.smop.entity.salmon.SalmonEntity;
 import net.darkblade.smop.entity.tangoftero.TangofteroEntity;
@@ -99,6 +100,32 @@ public final class SMOPEntities {
                             .sized(3.0F, 1.6F)
                             .clientTrackingRange(10)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("nirasmosaurus"))));
+
+    /**
+     * The Tangoftero's arrow.
+     *
+     * <p>Not a mob, so the numbers come from vanilla's own {@code EntityType.ARROW} rather than from
+     * anything in this file: 0.5 cubed, eye height 0.13, a tracking range of 4 and — the one that
+     * matters — {@code updateInterval(20)}. An arrow's flight is dead reckoning on the client, so it
+     * needs a position packet twenty times less often than a walking animal; leaving the default of 3
+     * would put three times the traffic on the wire for a projectile that lives two seconds.
+     *
+     * <p><b>{@code noLootTable()} is deliberately absent</b>, though vanilla's arrow carries it. It
+     * cannot be used here: {@code DeluxeEntityLootSubProvider} hands an empty table to every entity in
+     * the register, and {@code EntityLootSubProvider#add} resolves the default loot table key with
+     * {@code orElseThrow}. Declaring this arrow table-less would abort {@code runDataServer} rather
+     * than skip it. The cost of leaving it out is one three-line generated file that nothing reads,
+     * because loot is only ever rolled for a {@code LivingEntity}. Fixing it properly means teaching
+     * DeluxeLib's provider to skip table-less types, which belongs in DeluxeLib.
+     */
+    public static final DeferredHolder<EntityType<?>, EntityType<TangoArrowEntity>> TANGO_ARROW =
+            ENTITY_TYPES.register("tango_arrow",
+                    () -> EntityType.Builder.<TangoArrowEntity>of(TangoArrowEntity::new, MobCategory.MISC)
+                            .sized(0.5F, 0.5F)
+                            .eyeHeight(0.13F)
+                            .clientTrackingRange(4)
+                            .updateInterval(20)
+                            .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("tango_arrow"))));
 
     public static void register(IEventBus modEventBus) {
         ENTITY_TYPES.register(modEventBus);

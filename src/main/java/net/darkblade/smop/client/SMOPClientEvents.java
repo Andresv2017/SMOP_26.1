@@ -7,6 +7,7 @@ import net.darkblade.smop.client.hellhippo.HellHippoRenderer;
 import net.darkblade.smop.client.niras.NirasBabyModel;
 import net.darkblade.smop.client.niras.NirasRenderer;
 import net.darkblade.smop.client.niras.NirasmosaurusModel;
+import net.darkblade.smop.client.projectile.TangoArrowRenderer;
 import net.darkblade.smop.client.krifto.KriftoBabyModel;
 import net.darkblade.smop.client.krifto.KriftognathusModel;
 import net.darkblade.smop.client.krifto.KriftognathusRenderer;
@@ -45,6 +46,7 @@ public final class SMOPClientEvents {
         event.registerEntityRenderer(SMOPEntities.KRIFTOGNATHUS.get(), KriftognathusRenderer::new);
         event.registerEntityRenderer(SMOPEntities.HELL_HIPPO.get(), HellHippoRenderer::new);
         event.registerEntityRenderer(SMOPEntities.NIRASMOSAURUS.get(), NirasRenderer::new);
+        event.registerEntityRenderer(SMOPEntities.TANGO_ARROW.get(), TangoArrowRenderer::new);
     }
 
     private SMOPClientEvents() {}

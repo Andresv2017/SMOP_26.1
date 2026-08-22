@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:campfire_cooking",
+  "category": "food",
+  "cookingtime": 600,
+  "experience": 0.35,
+  "ingredient": "smop:nirasmo_meat",
+  "result": {
+    "id": "smop:cooked_nirasmo_meat"
+  }
+}

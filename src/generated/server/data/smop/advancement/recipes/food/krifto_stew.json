@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_krifto_wing": {
+      "conditions": {
+        "items": [
+          {
+            "items": "smop:krifto_wing"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "smop:krifto_stew"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_krifto_wing"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "smop:krifto_stew"
+    ]
+  }
+}

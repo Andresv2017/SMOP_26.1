@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "#": "minecraft:stick",
+    "X": "minecraft:flint",
+    "Y": "smop:tango_feather"
+  },
+  "pattern": [
+    "X",
+    "#",
+    "Y"
+  ],
+  "result": {
+    "count": 4,
+    "id": "smop:tango_arrow"
+  }
+}

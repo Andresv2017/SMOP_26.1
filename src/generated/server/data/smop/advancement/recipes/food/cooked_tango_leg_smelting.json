@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_tango_leg": {
+      "conditions": {
+        "items": [
+          {
+            "items": "smop:tango_leg"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "smop:cooked_tango_leg_smelting"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_tango_leg"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "smop:cooked_tango_leg_smelting"
+    ]
+  }
+}
