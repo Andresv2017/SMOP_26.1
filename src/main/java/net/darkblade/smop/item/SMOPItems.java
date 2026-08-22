@@ -170,6 +170,30 @@ public final class SMOPItems {
                             .setDamageOnHurt(false)
                             .build())));
 
+    // ───────────────────────────────────────────────────── WEAPONS ─────
+
+    /**
+     * A throwable javelin, and the stack size is the balance lever.
+     *
+     * <p>1.20.1 allowed 16, which made throwing one weightless. Four is a handful: enough that the
+     * spear is ammunition rather than a single precious trident, few enough that you notice spending
+     * one. Melee numbers are the legacy's, unchanged — the spear is a poor sword and a good javelin,
+     * and the slow swing is what says so.
+     */
+    public static final DeferredItem<Item> NIRAS_SPEAR =
+            ITEMS.registerItem("niras_spear", props -> new NirasSpearItem(props
+                    .stacksTo(4)
+                    .attributes(ItemAttributeModifiers.builder()
+                            .add(Attributes.ATTACK_DAMAGE,
+                                    new AttributeModifier(SMOP.id("niras_spear.attack_damage"),
+                                            3.0D, AttributeModifier.Operation.ADD_VALUE),
+                                    EquipmentSlotGroup.MAINHAND)
+                            .add(Attributes.ATTACK_SPEED,
+                                    new AttributeModifier(SMOP.id("niras_spear.attack_speed"),
+                                            -3.0D, AttributeModifier.Operation.ADD_VALUE),
+                                    EquipmentSlotGroup.MAINHAND)
+                            .build())));
+
     // ───────────────────────────────────────────────────── AMMUNITION ─────
 
     /**
@@ -230,6 +254,9 @@ public final class SMOPItems {
 
                         // ARMOUR
                         output.accept(HELL_HIPPO_ARMOR.get());
+
+                        // WEAPONS
+                        output.accept(NIRAS_SPEAR.get());
 
                         // AMMUNITION
                         output.accept(TANGO_ARROW.get());

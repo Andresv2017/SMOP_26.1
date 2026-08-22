@@ -3,6 +3,7 @@ package net.darkblade.smop.entity;
 import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
 import net.darkblade.smop.entity.niras.NirasmosaurusEntity;
+import net.darkblade.smop.entity.projectile.NirasSpearEntity;
 import net.darkblade.smop.entity.projectile.TangoArrowEntity;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
 import net.darkblade.smop.entity.salmon.SalmonEntity;
@@ -126,6 +127,19 @@ public final class SMOPEntities {
                             .clientTrackingRange(4)
                             .updateInterval(20)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("tango_arrow"))));
+
+    /**
+     * The thrown Nirasmosaurus spear. Sized and tracked like vanilla's thrown trident rather than
+     * like the arrow above — it is a heavier, slower thing and its 0.25 hitbox is the trident's.
+     */
+    public static final DeferredHolder<EntityType<?>, EntityType<NirasSpearEntity>> NIRAS_SPEAR =
+            ENTITY_TYPES.register("niras_spear",
+                    () -> EntityType.Builder.<NirasSpearEntity>of(NirasSpearEntity::new, MobCategory.MISC)
+                            .sized(0.25F, 0.25F)
+                            .eyeHeight(0.13F)
+                            .clientTrackingRange(4)
+                            .updateInterval(20)
+                            .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("niras_spear"))));
 
     public static void register(IEventBus modEventBus) {
         ENTITY_TYPES.register(modEventBus);

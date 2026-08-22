@@ -1,0 +1,22 @@
+{
+  "model": {
+    "type": "minecraft:select",
+    "property": "minecraft:display_context",
+    "cases": [
+      {
+        "when": [ "gui" ],
+        "model": {
+          "type": "minecraft:model",
+          "model": "smop:item/niras_spear"
+        }
+      }
+    ],
+    "fallback": {
+      "type": "minecraft:special",
+      "base": "smop:item/niras_spear_in_hand",
+      "model": {
+        "type": "smop:niras_spear"
+      }
+    }
+  }
+}

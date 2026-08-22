@@ -233,6 +233,17 @@ public final class SMOPDatagen {
                     .unlockedBy(getHasName(SMOPItems.TANGO_FEATHER.get()), this.has(SMOPItems.TANGO_FEATHER.get()))
                     .save(this.output);
 
+            // The javelin: a beak on two sticks, in the legacy's own diagonal. One per craft, and the
+            // stack caps at four, so arming yourself costs four beaks off four Nirasmosaurus.
+            this.shaped(RecipeCategory.COMBAT, SMOPItems.NIRAS_SPEAR.get())
+                    .pattern("  A")
+                    .pattern(" B ")
+                    .pattern("B  ")
+                    .define('A', SMOPItems.NIRASMO_BEAK.get())
+                    .define('B', Items.STICK)
+                    .unlockedBy(getHasName(SMOPItems.NIRASMO_BEAK.get()), this.has(SMOPItems.NIRASMO_BEAK.get()))
+                    .save(this.output);
+
             // Netherite-tier barding, upgraded off gold horse armour. Both vanilla ingredients still
             // exist in 26.1 under the same ids, so this ports across untouched.
             SmithingTransformRecipeBuilder.smithing(
