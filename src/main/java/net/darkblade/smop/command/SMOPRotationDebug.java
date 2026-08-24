@@ -136,13 +136,20 @@ public final class SMOPRotationDebug {
         lastEntityId = gt.getId();
         lastHeading = heading;
 
-        // La velocidad de la animación de andar es la misma señal con la que GTSpineTurn decide si el
-        // hueco lo mide contra el rumbo o contra la cabeza, así que se enseña al lado.
-        boolean moving = gt.walkAnimation.speed() > 0.01F;
+        // Dos medidas de "se mueve", y a propósito las dos: el desplazamiento real por tick es el que
+        // usan el control de rotación y el de movimiento para decidir, y walkAnimation.speed() es lo
+        // que llega al render. Si alguna vez discrepan, el bicho se estaría animando distinto de como
+        // se comporta, y eso hay que verlo, no deducirlo.
+        double dx = gt.getX() - gt.xo;
+        double dz = gt.getZ() - gt.zo;
+        double stepped = Math.sqrt(dx * dx + dz * dz);
+        boolean moving = stepped > 0.001D;
 
         String line = String.format(
-                "rumbo %7.1f | cuerpo %7.1f | cabeza %7.1f || hueco %+6.1f | cab-cue %+6.1f | giro %+5.2f/t | %s",
-                heading, body, head, headingGap, headGap, turnRate, moving ? "anda" : "parado");
+                "rumbo %7.1f | cuerpo %7.1f | cabeza %7.1f || hueco %+6.1f | cab-cue %+6.1f | giro %+5.2f/t | "
+                        + "avance %.4f b/t (%s) | anim %.3f",
+                heading, body, head, headingGap, headGap, turnRate,
+                stepped, moving ? "anda" : "parado", gt.walkAnimation.speed());
 
         // Amarillo cuando el hueco está abierto de verdad: es el único estado en el que la cascada
         // tiene algo que propagar, y así se ve de un vistazo cuándo mirar al bicho.

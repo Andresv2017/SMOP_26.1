@@ -38,11 +38,16 @@ import java.util.function.Function;
  * <p>La cola transmite en NEGATIVO a propósito: un animal grande que gira a la derecha lanza la cola a
  * la izquierda y la recoge después. Sin ese contragiro la cola parece pegada con cola.
  *
- * <p><b>De dónde sale el hueco</b>, y por qué son dos fuentes y no una: se copia el criterio del
- * propio control de rotación. Andando, el cuerpo persigue al RUMBO ({@code getYRot}), así que el hueco
- * es rumbo contra cuerpo. Parado, el cuerpo persigue a la CABEZA, así que el hueco es cabeza contra
- * cuerpo — y ése es el caso de plantarse a mirarte en combate. Leer sólo uno de los dos deja medio
- * repertorio sin animar.
+ * <p><b>De dónde sale el hueco: del RUMBO, siempre.</b> {@code GTBodyRotation} hace que el cuerpo
+ * persiga al rumbo ande o esté parado, así que rumbo-menos-cuerpo es la señal correcta en los dos
+ * estados y no hay nada que elegir.
+ *
+ * <p>La primera versión sí elegía —rumbo andando, cabeza parado— copiando el reparto que hace el
+ * control de rotación de la librería, y eso era un error que costó una sesión entera de pruebas: al
+ * cambiar el cuerpo para que persiguiera SIEMPRE al rumbo, esa rama dejó de tener sentido y se quedó.
+ * Medido en juego con {@code /smop debug rotation}, con el animal parado el hueco contra el rumbo
+ * valía 25 grados y contra la cabeza 2.5 — por debajo de la zona muerta. O sea que <b>la columna
+ * entera estaba muerta justo en el estado en el que más se la mira</b>: girando sobre el sitio.
  */
 public final class GTSpineTurn implements RigComponent<GTModel> {
 
@@ -89,9 +94,6 @@ public final class GTSpineTurn implements RigComponent<GTModel> {
      * contra la rejilla de bloques, y amplificar ese ruido hace que andar recto parezca culebrear.
      */
     private static final float DEADZONE = 3.0F;
-
-    /** Por encima de esto se considera que anda, y el hueco se mide contra el rumbo. */
-    private static final float MOVING_THRESHOLD = 0.01F;
 
     /** Paso máximo de integración, para que el muelle no explote a 10 FPS. */
     private static final float MAX_STEP_SECONDS = 1.0F / 120.0F;
@@ -160,12 +162,9 @@ public final class GTSpineTurn implements RigComponent<GTModel> {
      */
     private static float headingGap(@NotNull DeluxeEntityRenderState renderState,
                                     @NotNull LivingEntity entity, float partialTick) {
-        boolean moving = renderState.walkAnimationSpeed > MOVING_THRESHOLD;
-        // Andando manda el rumbo; parado manda la cabeza. Mismo criterio que el control de rotación
-        // usa para decidir a quién persigue el cuerpo, y por eso las dos fuentes casan.
-        float wanted = moving
-                ? Mth.rotLerp(partialTick, entity.yRotO, entity.getYRot())
-                : Mth.rotLerp(partialTick, entity.yHeadRotO, entity.yHeadRot);
+        // El rumbo, y punto: es a quien persigue el cuerpo en los dos estados. Interpolado con el
+        // partial tick igual que el bodyRot contra el que se resta, o el hueco temblaría entre frames.
+        float wanted = Mth.rotLerp(partialTick, entity.yRotO, entity.getYRot());
         float gap = Mth.wrapDegrees(wanted - renderState.bodyRot);
         float magnitude = Math.abs(gap) - DEADZONE;
         return magnitude <= 0.0F ? 0.0F : Math.copySign(magnitude, gap);
