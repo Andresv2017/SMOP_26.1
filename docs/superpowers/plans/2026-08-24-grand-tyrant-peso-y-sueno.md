@@ -511,6 +511,16 @@ git commit -m "GT: la columna se enrosca hacia el giro y la cola llega tarde"
 
 ---
 
+## Tarea A4: Cabeceo y parpadeo — DESCARTADA
+
+> **No se implementó, y el motivo está medido.** Al ejecutarla se comprobó que todos los clips animan
+> ya la escala de `eyes`: `idle` parpadea dos veces por ciclo (Y a 0 en t=4.7 y t=9.7 de sus 10 s),
+> `walk` los entorna cada 0.75 s, `roar` hace una actuación entera y `sleep` los tiene cerrados.
+> `IdleBlinkAdditive` no necesitaba otra compuerta: era un duplicado. El cabeceo se cae por lo mismo,
+> porque `idle` ya mueve cabeza (7.5° en X) y cuello (8.4° X, 9.8° Y). Ver la sección 1.4 del spec.
+>
+> Los pasos de abajo se conservan por si un mob de idle más seco los quiere.
+
 ## Tarea A4: Cabeceo y parpadeo
 
 **Ficheros:**

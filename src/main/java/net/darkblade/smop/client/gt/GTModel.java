@@ -65,8 +65,6 @@ public class GTModel extends EntityModel<DeluxeEntityRenderState> {
     public final ModelPart root;
     public final ModelPart body_parts;
     public final ModelPart neck;
-    public final ModelPart head;
-    public final ModelPart eyes;
     public final ModelPart tail1;
     public final ModelPart tail2;
     public final ModelPart tail3;
@@ -76,8 +74,6 @@ public class GTModel extends EntityModel<DeluxeEntityRenderState> {
         this.root = root.getChild("GT");
         this.body_parts = this.root.getChild("body_parts");
         this.neck = this.body_parts.getChild("neck");
-        this.head = this.neck.getChild("head");
-        this.eyes = this.head.getChild("eyes");
         this.tail1 = this.body_parts.getChild("tail1");
         this.tail2 = this.tail1.getChild("tail2");
         this.tail3 = this.tail2.getChild("tail3");

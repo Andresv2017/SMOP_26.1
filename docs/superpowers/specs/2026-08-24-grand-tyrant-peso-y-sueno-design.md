@@ -136,7 +136,35 @@ de ~5°** para que caminar recto no le haga vibrar la columna.
 
 `GTModel` sólo expone hoy `root` y `neck`; hay que sacar los huesos que esto necesita.
 
-## 1.4 · Cabeceo y parpadeo
+## 1.4 · Cabeceo y parpadeo — DESCARTADO al implementarlo
+
+**No se hace, y el motivo está medido.** Esta sección se escribió dando por bueno que los componentes
+hacían falta porque estaban sin estrenar. Están sin estrenar, pero el trabajo ya estaba hecho a mano
+en los clips, y eso no se comprobó antes de escribirla.
+
+Todos los clips animan la escala de `eyes`, y no como pose fija:
+
+| Clip | Qué le hace a los ojos |
+|---|---|
+| `idle` | **parpadea dos veces por ciclo** — escala Y a 0 en t=4.7 y t=9.7 de sus 10 s |
+| `walk` | los entorna a ritmo, a 0.5 cada 0.75 s |
+| `roar` | cierre seco, entrecerrado sostenido y cierre final |
+| `sleep` | cerrados del todo |
+
+Así que `IdleBlinkAdditive` no necesitaba otra compuerta: **era un duplicado**. Su propia
+documentación dice que es para estados donde ningún clip toca los ojos, y aquí no hay ninguno.
+
+El cabeceo se cae por lo mismo con un margen menor: `idle` ya anima cabeza y cuello — 7.5° de
+recorrido en X en la cabeza, 8.4° en X y 9.8° en Y en el cuello. Meter giros secos con esperas largas
+encima de un idle de diez segundos que ya se mueve serían dos idles peleándose.
+
+**La lección, que vale para el resto del mod:** antes de montar un componente procedural de reposo,
+mirar si los clips ya lo hacen. Estos componentes son para rigs con idles secos, no para uno como
+éste.
+
+Lo que sigue es el diseño original, conservado por si un mob futuro sí lo necesita.
+
+### Diseño original (no implementado)
 
 `IdleHeadAdditive` e `IdleBlinkAdditive`, también sin estrenar, y los dos puramente procedurales.
 
