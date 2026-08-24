@@ -3,7 +3,6 @@ package net.darkblade.smop.client.gt;
 import net.darkblade.deluxelib.client.render.DeluxeEntityRenderState;
 import net.darkblade.deluxelib.client.rig.AnimContext;
 import net.darkblade.deluxelib.client.rig.Rig;
-import net.darkblade.deluxelib.client.rig.component.TurnLeanAdditive;
 import net.darkblade.smop.SMOP;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.geom.ModelLayerLocation;
@@ -40,31 +39,17 @@ public class GTModel extends EntityModel<DeluxeEntityRenderState> {
                     .resetPoses()
                     .keyframeBlend(220L, 0)
                     .lookAt(m -> m.neck, 45.0F, 30.0F)
-                    // El gap de rumbo, pasado por un muelle. Encaja en este mob mejor que en ningún
-                    // otro del mod porque gira a 5 grados por tick, así que un viraje cerrado dura
-                    // más de un segundo y el gap se queda abierto todo ese rato; en uno que gire
-                    // rápido sería un pico que el suavizado se come.
-                    .turnLean(TurnLeanAdditive.<GTModel>builder()
-                            // Lento y bastante amortiguado: es un animal pesado, no un látigo.
-                            .springFrequency(1.2F)
-                            .springDamping(0.6F)
-                            // Sin zona muerta, caminar recto le haría vibrar la columna con el ruido
-                            // del grado de gap que siempre hay.
-                            .gapDeadzone(5.0F)
-                            .coil(m -> m.body_parts, 0.25F, 12.0F)
-                            .coil(m -> m.neck, 0.35F, 18.0F)
-                            // La cola llega TARDE, y con factor descendente: cada eslabón se queda
-                            // más atrás que el anterior. Eso es lo que la hace pesar.
-                            .lag(m -> m.tail1, 0.50F, 25.0F)
-                            .lag(m -> m.tail2, 0.35F, 18.0F)
-                            .lag(m -> m.tail3, 0.20F, 12.0F)
-                            .bank(m -> m.body_parts, 0.20F, 10.0F)
-                            .build())
+                    // El giro NO va aquí con TurnLeanAdditive, y no es por no estrenarlo: ese
+                    // componente aplica el mismo valor a todos los huesos a la vez, así que puede
+                    // inclinar pero no puede PROPAGAR, y lee el hueco cabeza-cuerpo, que en este bicho
+                    // vale casi cero porque no tiene goals de mirada. Ver GTSpineTurn.
+                    .add(new GTSpineTurn())
                     .build();
 
     public final ModelPart root;
     public final ModelPart body_parts;
     public final ModelPart neck;
+    public final ModelPart head;
     public final ModelPart tail1;
     public final ModelPart tail2;
     public final ModelPart tail3;
@@ -74,6 +59,7 @@ public class GTModel extends EntityModel<DeluxeEntityRenderState> {
         this.root = root.getChild("GT");
         this.body_parts = this.root.getChild("body_parts");
         this.neck = this.body_parts.getChild("neck");
+        this.head = this.neck.getChild("head");
         this.tail1 = this.body_parts.getChild("tail1");
         this.tail2 = this.tail1.getChild("tail2");
         this.tail3 = this.tail2.getChild("tail3");

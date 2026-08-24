@@ -103,6 +103,19 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
     private static final float BODY_LAG_STILL = 0.02F;
     /** Ten, not thirty: turning the body 30 degrees in a tick contradicts a heading that turns 5. */
     private static final float BODY_MAX_TURN = 10.0F;
+    /**
+     * El cuerpo cierra el 22% del hueco contra el rumbo por tick, no el 36% de la librería.
+     *
+     * <p>Es la mitad del giro con peso, y la otra mitad la pone {@code GTSpineTurn}. Este número
+     * decide <b>cuánto se retrasa el cuerpo respecto a donde el animal ha decidido ir</b>, y ese
+     * retraso es la señal que la columna propaga: sin hueco no hay nada que cascadear y el bicho gira
+     * de una pieza por muy bien montada que esté la cadena de muelles.
+     *
+     * <p>Con el rumbo girando a los 5 grados/tick de {@code TURN_SPEED}, el 36% de la librería deja un
+     * retraso estacionario de unos 14 grados; el 22% lo sube a unos 25. <b>Éste es el mando a tocar si
+     * el giro se siente flojo o exagerado</b> — bajarlo pesa más, subirlo lo hace más ágil.
+     */
+    private static final float BODY_LAG_MOVING = 0.22F;
 
     private final MobAnimator<GTEntity> animator;
 
@@ -124,6 +137,7 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
     protected @NotNull BodyRotationControl createBodyControl() {
         SmoothBodyRotationControl<GTEntity> control = new SmoothBodyRotationControl<>(this);
         control.bodyLagStill = BODY_LAG_STILL;
+        control.bodyLagMoving = BODY_LAG_MOVING;
         control.bodyMax = BODY_MAX_TURN;
         return control;
     }
