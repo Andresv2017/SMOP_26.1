@@ -136,10 +136,14 @@ public final class SMOPRotationDebug {
         lastEntityId = gt.getId();
         lastHeading = heading;
 
-        // Dos medidas de "se mueve", y a propósito las dos: el desplazamiento real por tick es el que
-        // usan el control de rotación y el de movimiento para decidir, y walkAnimation.speed() es lo
-        // que llega al render. Si alguna vez discrepan, el bicho se estaría animando distinto de como
-        // se comporta, y eso hay que verlo, no deducirlo.
+        // El desplazamiento real por tick, que es la ÚNICA medida fiable de "se mueve" en servidor.
+        //
+        // Aquí hubo antes una segunda columna con walkAnimation.speed(), para cotejarlas. Cotejadas:
+        // con el animal caminando a 0.088 bloques/tick, walkAnimation.speed() marcaba 0.000 en todas
+        // las líneas — ese estado sólo se mantiene en cliente, para el render. Leerlo aquí me hizo dar
+        // por parado a un bicho que llevaba dos minutos andando, así que la columna se fue. Nadie
+        // depende de ella: walk y sprint cuelgan de isMoving() (el estado que sincroniza el Cortex) y
+        // la rotación del cuerpo, de este mismo desplazamiento.
         double dx = gt.getX() - gt.xo;
         double dz = gt.getZ() - gt.zo;
         double stepped = Math.sqrt(dx * dx + dz * dz);
@@ -147,9 +151,9 @@ public final class SMOPRotationDebug {
 
         String line = String.format(
                 "rumbo %7.1f | cuerpo %7.1f | cabeza %7.1f || hueco %+6.1f | cab-cue %+6.1f | giro %+5.2f/t | "
-                        + "avance %.4f b/t (%s) | anim %.3f",
+                        + "avance %.4f b/t (%s)",
                 heading, body, head, headingGap, headGap, turnRate,
-                stepped, moving ? "anda" : "parado", gt.walkAnimation.speed());
+                stepped, moving ? "anda" : "parado");
 
         // Amarillo cuando el hueco está abierto de verdad: es el único estado en el que la cascada
         // tiene algo que propagar, y así se ve de un vistazo cuándo mirar al bicho.

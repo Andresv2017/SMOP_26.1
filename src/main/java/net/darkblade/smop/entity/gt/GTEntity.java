@@ -220,13 +220,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                         new HurtByAttackerTargeting<>(GRUDGE_TICKS)))
                 .register(GTState.WANDER, new WanderBehavior<GTEntity, GTState>(1.0D)
                         .wanderRange(WANDER_RANGE_H, WANDER_RANGE_V)
-                        // TEMPORAL, para poder mirarlo andar. El defecto es 0.01, o sea una tirada por
-                        // tick al llegar: unos cinco segundos plantado entre paseo y paseo, que para
-                        // juzgar cómo gira es insufrible. Con 0.12 apenas para.
-                        //
-                        // DEVOLVER A 0.01 —o quitar la línea— antes de dar el módulo por bueno: un
-                        // jefe que no se está quieto nunca es otra criatura.
-                        .wanderChance(0.12F)
                         .onTargetFound(GTState.CHASE))
                 // 2.0, el doble del deambular: es el CHASE_SPEED del legacy, y sin él la persecución
                 // va exactamente igual de rápido que el paseo — reportado desde el juego.
