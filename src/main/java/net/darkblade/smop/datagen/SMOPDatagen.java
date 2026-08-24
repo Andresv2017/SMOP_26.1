@@ -299,6 +299,9 @@ public final class SMOPDatagen {
             // legacy recipe and model files port across unchanged. Auto-derivation would read it
             // literally and call it "Hellhippo Armor".
             add(SMOPItems.HELL_HIPPO_ARMOR.get(), "Hell Hippo Armor");
+            // Registry id is "gt". Auto-derivation would call it "Gt"; the 1.20.1 lang said
+            // "Grant Tyrant", which was a typo. It is Grand, with a d.
+            add(SMOPEntities.GT.get(), "Grand Tyrant");
 
             // Everything else: krifto_meat -> "Krifto Meat", tango_feather -> "Tango Feather", ...
             autoItemNames(SMOPItems.ITEMS);

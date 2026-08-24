@@ -1,6 +1,7 @@
 package net.darkblade.smop.entity;
 
 import net.darkblade.smop.SMOP;
+import net.darkblade.smop.entity.gt.GTEntity;
 import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
 import net.darkblade.smop.entity.niras.NirasmosaurusEntity;
 import net.darkblade.smop.entity.projectile.NirasSpearEntity;
@@ -101,6 +102,27 @@ public final class SMOPEntities {
                             .sized(3.0F, 1.6F)
                             .clientTrackingRange(10)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("nirasmosaurus"))));
+
+    /**
+     * The Grand Tyrant: 3.2 wide, 6.2 tall, one AABB.
+     *
+     * <p>Not the multipart hitbox 1.20.1 gave it — {@code PartEntity} support still does not exist in
+     * DeluxeLib (verified again for this port) and lands as its own piece of library work, shared with
+     * the Nirasmosaurus. Until then, hitting the tail counts as hitting the head.
+     *
+     * <p>{@code clientTrackingRange(16)} rather than the 10 the other large mobs use: a six-block
+     * animal you cannot see coming is a jump-scare, not a boss.
+     *
+     * <p>{@code MobCategory.CREATURE} is the legacy's, kept by explicit decision — see the port spec
+     * for the measurement that says this category is permanently saturated, and for how to confirm it
+     * in game before changing anything.
+     */
+    public static final DeferredHolder<EntityType<?>, EntityType<GTEntity>> GT =
+            ENTITY_TYPES.register("gt",
+                    () -> EntityType.Builder.<GTEntity>of(GTEntity::new, MobCategory.CREATURE)
+                            .sized(3.2F, 6.2F)
+                            .clientTrackingRange(16)
+                            .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("gt"))));
 
     /**
      * The Tangoftero's arrow.

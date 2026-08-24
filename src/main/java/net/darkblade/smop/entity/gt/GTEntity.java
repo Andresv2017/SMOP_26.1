@@ -246,14 +246,15 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
             return;
         }
         double yaw = Math.toRadians(this.yBodyRot);
-        double side = leftFoot ? FOOTFALL_LATERAL_OFFSET : -FOOTFALL_LATERAL_OFFSET;
+        // (cos, sin) del yaw apunta al lado DERECHO del bicho, así que la izquierda va en negativo.
+        double side = leftFoot ? -FOOTFALL_LATERAL_OFFSET : FOOTFALL_LATERAL_OFFSET;
         Vec3 foot = new Vec3(
                 this.getX() + Math.cos(yaw) * side,
-                this.getY(),
+                this.getY() + 0.1D,
                 this.getZ() + Math.sin(yaw) * side);
 
         ParticleOptions debris = new BlockParticleOption(ParticleTypes.BLOCK, this.getBlockStateOn());
-        ParticleFx.burst(serverLevel, debris, foot, FOOTFALL_DUST_COUNT, 0.35D, 0.02D);
+        ParticleFx.burst(serverLevel, debris, foot, FOOTFALL_DUST_COUNT, FOOTFALL_DUST_SPREAD, 0.05D);
 
         for (ServerPlayer player : serverLevel.players()) {
             double distance = player.position().distanceTo(foot);
@@ -679,14 +680,20 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
      * ticks, o sea DOS VECES POR SEGUNDO mientras te persigue. Con la amplitud del pisotón eso es
      * insoportable de mirar.
      */
-    private static final float WALK_SHAKE_AMPLITUDE = 0.12F;
-    private static final float SPRINT_SHAKE_AMPLITUDE = 0.18F;
-    /** Corta: 10 bloques con caída lineal, así que sólo se siente cuando lo tienes encima. */
-    private static final double FOOTFALL_SHAKE_RADIUS = 10.0D;
+    private static final float WALK_SHAKE_AMPLITUDE = 0.25F;
+    private static final float SPRINT_SHAKE_AMPLITUDE = 0.40F;
+    /** Catorce bloques con caída lineal: fuera de eso no se siente nada. */
+    private static final double FOOTFALL_SHAKE_RADIUS = 14.0D;
     private static final int FOOTFALL_SHAKE_TICKS = 3;
     /** Medio ancho entre patas, para que el polvo salga bajo el pie que toca y no bajo el centro. */
     private static final double FOOTFALL_LATERAL_OFFSET = 1.2D;
-    private static final int FOOTFALL_DUST_COUNT = 6;
+    /**
+     * Dieciocho partículas en 0.7, y no las seis en 0.35 de la primera versión: reportado desde el
+     * juego que no se veía nada. El pisotón usa 40 en 1.5, así que una pisada a la sexta parte de eso
+     * era invisible debajo de un animal de 3.2 bloques de ancho.
+     */
+    private static final int FOOTFALL_DUST_COUNT = 18;
+    private static final double FOOTFALL_DUST_SPREAD = 0.7D;
 
     @Override
     public void registerAnimations() {

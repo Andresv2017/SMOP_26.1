@@ -4,6 +4,8 @@ import net.darkblade.smop.SMOP;
 import net.darkblade.smop.entity.SMOPEntities;
 import net.darkblade.smop.entity.SMOPSpawnPlacementTypes;
 import net.darkblade.smop.entity.hellhippo.HellHippoEntity;
+import net.darkblade.smop.entity.gt.GTEntity;
+import net.minecraft.world.entity.Mob;
 import net.darkblade.smop.entity.niras.NirasmosaurusEntity;
 import net.darkblade.smop.entity.krifto.KriftognathusEntity;
 import net.darkblade.smop.entity.salmon.SalmonEntity;
@@ -26,6 +28,7 @@ public final class SMOPEntityAttributes {
         event.put(SMOPEntities.KRIFTOGNATHUS.get(), KriftognathusEntity.createAttributes().build());
         event.put(SMOPEntities.HELL_HIPPO.get(), HellHippoEntity.createAttributes().build());
         event.put(SMOPEntities.NIRASMOSAURUS.get(), NirasmosaurusEntity.createAttributes().build());
+        event.put(SMOPEntities.GT.get(), GTEntity.createAttributes().build());
     }
 
     /**
@@ -73,6 +76,18 @@ public final class SMOPEntityAttributes {
                 SMOPSpawnPlacementTypes.IN_WATER_OR_ON_SHORE,
                 Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
                 NirasmosaurusEntity::checkNirasSpawnRules,
+                RegisterSpawnPlacementsEvent.Operation.REPLACE);
+
+        // Mob::checkMobSpawnRules, no la de Animal ni la de Monster.
+        //
+        // La de Animal dejó de aplicar cuando el GT pasó a CortexMonster, que extiende PathfinderMob
+        // y no Animal. La de Monster habría sido el reflejo fácil, pero exige oscuridad y eso cambia
+        // lo que se decidió: llanura y desierto, sin condición de luz. checkMobSpawnRules es la
+        // neutral — solo comprueba que el bloque de debajo admita spawn — y conserva esa intención.
+        event.register(SMOPEntities.GT.get(),
+                SpawnPlacementTypes.ON_GROUND,
+                Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                Mob::checkMobSpawnRules,
                 RegisterSpawnPlacementsEvent.Operation.REPLACE);
     }
 

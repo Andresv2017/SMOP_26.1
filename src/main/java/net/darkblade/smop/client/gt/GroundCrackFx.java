@@ -8,6 +8,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -17,8 +19,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Grietas cosméticas en el suelo bajo el pisotón. <b>No rompe nada</b>: pinta la textura de rotura de
@@ -36,17 +40,27 @@ public final class GroundCrackFx {
 
     /** Fuera de 1..9 el renderer ignora la petición; 9 es la última etapa antes de la rotura. */
     private static final int MAX_STAGE = 9;
-    private static final int MIN_START_STAGE = 5;
-    private static final int MAX_START_STAGE = 8;
+
+    /**
+     * Etapa en el borde del disco y bajo el pie. <b>La grieta se lee por la profundidad, no por el
+     * sitio:</b> hondo donde cayó el pie y superficial en el borde cuenta un impacto, mientras que una
+     * etapa al azar por bloque —lo que hacía la primera versión— sólo parece ruido.
+     *
+     * <p>Se deja el 9 sin usar a propósito: es a donde llega el centro cuando el segundo y el tercer
+     * impacto profundizan lo que ya había.
+     */
+    private static final int RIM_STAGE = 4;
+    private static final int FOOT_STAGE = 8;
 
     /** Ticks que dura una grieta antes de borrarse. El legacy usaba 22 y se lee bien. */
     private static final int TTL_TICKS = 22;
 
-    /** De cada 10 celdas del disco, se agrietan ~3. Denso queda a barro, y ralo no se lee. */
-    private static final int SKIP_UNDER = 7;
-
-    /** Techo por impacto, para que un radio grande no dispare el coste de golpe. */
-    private static final int MAX_PER_IMPACT = 48;
+    /**
+     * Intentos de agrietar por impacto. Salen menos posiciones que intentos porque dos tiradas pueden
+     * caer en la misma columna, y esa pérdida es mayor cerca del centro — que es donde interesa que se
+     * amontonen.
+     */
+    private static final int SAMPLES_PER_IMPACT = 90;
 
     /** Cuánto se busca suelo hacia abajo desde la altura del bicho. */
     private static final int GROUND_SEARCH_DOWN = 6;
@@ -66,28 +80,44 @@ public final class GroundCrackFx {
         if (level == null) {
             return;
         }
-        int spawned = 0;
-        for (int dx = -radius; dx <= radius && spawned < MAX_PER_IMPACT; dx++) {
-            for (int dz = -radius; dz <= radius && spawned < MAX_PER_IMPACT; dz++) {
-                if (dx * dx + dz * dz > radius * radius) {
-                    continue;
-                }
-                if (level.getRandom().nextInt(10) < SKIP_UNDER) {
-                    continue;
-                }
-                BlockPos ground = findGround(level, center.offset(dx, 0, dz));
-                if (ground == null) {
-                    continue;
-                }
-                BlockState state = level.getBlockState(ground);
-                level.addParticle(new BlockParticleOption(ParticleTypes.BLOCK, state),
-                        ground.getX() + 0.5D, ground.getY() + 1.0D, ground.getZ() + 0.5D,
-                        0.0D, 0.05D, 0.0D);
-                add(ground, TTL_TICKS,
-                        MIN_START_STAGE + level.getRandom().nextInt(MAX_START_STAGE - MIN_START_STAGE + 1));
-                spawned++;
+        RandomSource random = level.getRandom();
+        // Las columnas ya tocadas en ESTE impacto. Sin esto, dos tiradas en la misma columna la
+        // profundizarían dos veces y el escalonado por distancia dejaría de contar lo que dice.
+        Set<Long> touched = new HashSet<>();
+
+        for (int i = 0; i < SAMPLES_PER_IMPACT; i++) {
+            // Muestreo polar, y la RAÍZ es lo que lo hace uniforme por área: sin ella todo se
+            // amontona en el centro, porque un anillo lejano tiene más superficie que uno cercano.
+            //
+            // Sortear posiciones en vez de barrer el cuadrado es el arreglo de un fallo real: barrer
+            // con un tope hacía que el tope llegara a media pasada, y el disco se agrietaba de -8 a
+            // +2 dejando SIEMPRE el mismo tercio intacto. Medido antes de cambiarlo.
+            double normalized = Math.sqrt(random.nextDouble());
+            double distance = radius * normalized;
+            double angle = random.nextDouble() * Math.PI * 2.0D;
+            int dx = (int) Math.round(Math.cos(angle) * distance);
+            int dz = (int) Math.round(Math.sin(angle) * distance);
+            if (!touched.add(BlockPos.asLong(dx, 0, dz))) {
+                continue;
             }
+            BlockPos ground = findGround(level, center.offset(dx, 0, dz));
+            if (ground == null) {
+                continue;
+            }
+            BlockState state = level.getBlockState(ground);
+            level.addParticle(new BlockParticleOption(ParticleTypes.BLOCK, state),
+                    ground.getX() + 0.5D, ground.getY() + 1.0D, ground.getZ() + 0.5D,
+                    0.0D, 0.05D, 0.0D);
+            add(ground, TTL_TICKS, stageFor(normalized));
         }
+    }
+
+    /**
+     * Etapa de una grieta según lo lejos que cayó del pie, de 0 (bajo el pie) a 1 (en el borde).
+     */
+    private static int stageFor(double normalizedDistance) {
+        double depth = 1.0D - Mth.clamp(normalizedDistance, 0.0D, 1.0D);
+        return RIM_STAGE + (int) Math.round(depth * (FOOT_STAGE - RIM_STAGE));
     }
 
     /**

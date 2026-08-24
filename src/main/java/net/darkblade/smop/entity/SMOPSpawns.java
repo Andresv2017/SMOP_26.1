@@ -107,6 +107,23 @@ public final class SMOPSpawns {
                 .spawnRate(8, 1, 2)
                 .biomes(Biomes.BEACH, Biomes.OCEAN, Biomes.LUKEWARM_OCEAN, Biomes.WARM_OCEAN)
                 .submit();
+
+        // Grand Tyrant: peso 5, uno solo, llanura y desierto — los números del 1.20.1 sin tocar, y la
+        // categoría también, por decisión explícita.
+        //
+        // Aviso, no discusión: la instrumentación que se escribió para el Nirasmosaurus midió que
+        // CREATURE no está lleno sino saturado por un factor de tres a ocho, y que no se recupera —
+        // 27 a 79 contra un tope de 10 en cuatro sitios de un mundo nuevo, con el 100% de 4.335
+        // intentos muriendo en esa puerta. La causa es que NaturalSpawner cuenta getAllEntities() del
+        // nivel entero, así que cada vaca cargada gasta el mismo presupuesto. Lo esperable es que este
+        // mob no aparezca nunca en survival.
+        //
+        // Se comprueba con /smop debug spawn con el bicho vivo. Si se confirma, MONSTER es una línea
+        // en SMOPEntities. No cambiar nada sin ese dato.
+        DeluxeBiomeSpawns.builder(SMOPEntities.GT::get, MobCategory.CREATURE)
+                .spawnRate(5, 1, 1)
+                .biomes(Biomes.PLAINS, Biomes.DESERT)
+                .submit();
     }
 
     private SMOPSpawns() {}

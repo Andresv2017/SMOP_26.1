@@ -4,6 +4,8 @@ import net.darkblade.smop.SMOP;
 import net.darkblade.smop.client.hellhippo.HellHippoBabyModel;
 import net.darkblade.smop.client.hellhippo.HellHippoModel;
 import net.darkblade.smop.client.hellhippo.HellHippoRenderer;
+import net.darkblade.smop.client.gt.GTModel;
+import net.darkblade.smop.client.gt.GTRenderer;
 import net.darkblade.smop.client.niras.NirasBabyModel;
 import net.darkblade.smop.client.niras.NirasRenderer;
 import net.darkblade.smop.client.niras.NirasmosaurusModel;
@@ -42,6 +44,7 @@ public final class SMOPClientEvents {
         event.registerLayerDefinition(NirasmosaurusModel.LAYER_LOCATION, NirasmosaurusModel::createBodyLayer);
         event.registerLayerDefinition(NirasBabyModel.LAYER_LOCATION, NirasBabyModel::createBodyLayer);
         event.registerLayerDefinition(NirasSpearModel.LAYER_LOCATION, NirasSpearModel::createLayer);
+        event.registerLayerDefinition(GTModel.LAYER_LOCATION, GTModel::createBodyLayer);
     }
 
     @SubscribeEvent
@@ -53,6 +56,7 @@ public final class SMOPClientEvents {
         event.registerEntityRenderer(SMOPEntities.NIRASMOSAURUS.get(), NirasRenderer::new);
         event.registerEntityRenderer(SMOPEntities.TANGO_ARROW.get(), TangoArrowRenderer::new);
         event.registerEntityRenderer(SMOPEntities.NIRAS_SPEAR.get(), NirasSpearRenderer::new);
+        event.registerEntityRenderer(SMOPEntities.GT.get(), GTRenderer::new);
     }
 
     /**
