@@ -230,6 +230,47 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
      * {@link ParticleFx} and {@code ShakeCameraPacket} becomes {@link ScreenShake}, which additionally
      * uses fBm noise instead of frame jitter.
      */
+    /**
+     * Una pisada: polvo bajo el pie que toca y una sacudida corta para quien esté cerca.
+     *
+     * <p>El polvo va SIEMPRE y la sacudida sólo de cerca, y esa asimetría es deliberada: el polvo es
+     * información a distancia —ves de lejos que algo pesado se acerca— y no marea a nadie, mientras
+     * que la sacudida a dos pisadas por segundo sí.
+     *
+     * <p>El GT es BÍPEDO: los {@code arms} son los brazos cortos y sólo hay dos patas, así que todas
+     * sus pisadas son de pata trasera y el mareo se contiene por amplitud y radio, no repartiendo el
+     * efecto entre delanteras y traseras como se haría en un cuadrúpedo.
+     */
+    private void onFootfall(boolean leftFoot, float amplitude) {
+        if (!(this.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        double yaw = Math.toRadians(this.yBodyRot);
+        double side = leftFoot ? FOOTFALL_LATERAL_OFFSET : -FOOTFALL_LATERAL_OFFSET;
+        Vec3 foot = new Vec3(
+                this.getX() + Math.cos(yaw) * side,
+                this.getY(),
+                this.getZ() + Math.sin(yaw) * side);
+
+        ParticleOptions debris = new BlockParticleOption(ParticleTypes.BLOCK, this.getBlockStateOn());
+        ParticleFx.burst(serverLevel, debris, foot, FOOTFALL_DUST_COUNT, 0.35D, 0.02D);
+
+        for (ServerPlayer player : serverLevel.players()) {
+            double distance = player.position().distanceTo(foot);
+            if (distance > FOOTFALL_SHAKE_RADIUS) {
+                continue;
+            }
+            float strength = (float) (amplitude * (1.0D - distance / FOOTFALL_SHAKE_RADIUS));
+            ScreenShake.forPlayer(player)
+                    .duration(FOOTFALL_SHAKE_TICKS)
+                    .fadeOut(2)
+                    .frequency(14.0F)
+                    .amplitude(strength)
+                    .seed(this.getId())
+                    .fire();
+        }
+    }
+
     private void onStompImpact() {
         if (!(this.level() instanceof ServerLevel serverLevel)) {
             return;
@@ -616,6 +657,37 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
     /** Ten ticks, which is what the legacy's {@code ShakeCameraPacket(10, ...)} used. */
     private static final int STOMP_SHAKE_TICKS = 10;
 
+    /**
+     * Frames de contacto de cada pata, MEDIDOS sobre los propios clips y no estimados.
+     *
+     * <p>Ninguna pata anima posición: la marcha va entera en la rotación X del muslo, y el ciclo tiene
+     * dos tramos de duración muy distinta cubriendo el mismo recorrido de 37.5 grados. El lento —2.05 s
+     * en {@code walk}— es el apoyo, con el pie clavado y el cuerpo pasando por encima; el rápido
+     * —0.95 s— es el vuelo. El contacto es la transición rápido→lento, y ese razonamiento no depende
+     * del convenio de signo del eje.
+     *
+     * <p>Las dos patas salen desfasadas exactamente media fase en los dos clips, que es la
+     * comprobación de que la lectura es correcta.
+     */
+    private static final int WALK_LEFT_FOOTFALL = 7;
+    private static final int WALK_RIGHT_FOOTFALL = 37;
+    private static final int SPRINT_LEFT_FOOTFALL = 3;
+    private static final int SPRINT_RIGHT_FOOTFALL = 13;
+
+    /**
+     * Amplitudes muy por debajo del 0.5 del pisotón, y no por timidez: {@code sprint} pisa cada 10
+     * ticks, o sea DOS VECES POR SEGUNDO mientras te persigue. Con la amplitud del pisotón eso es
+     * insoportable de mirar.
+     */
+    private static final float WALK_SHAKE_AMPLITUDE = 0.12F;
+    private static final float SPRINT_SHAKE_AMPLITUDE = 0.18F;
+    /** Corta: 10 bloques con caída lineal, así que sólo se siente cuando lo tienes encima. */
+    private static final double FOOTFALL_SHAKE_RADIUS = 10.0D;
+    private static final int FOOTFALL_SHAKE_TICKS = 3;
+    /** Medio ancho entre patas, para que el polvo salga bajo el pie que toca y no bajo el centro. */
+    private static final double FOOTFALL_LATERAL_OFFSET = 1.2D;
+    private static final int FOOTFALL_DUST_COUNT = 6;
+
     @Override
     public void registerAnimations() {
         StandardAnimation idle = new StandardAnimation("idle",
@@ -677,6 +749,13 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                 new AnimSource(() -> GTAnimationsBase.sprint), Loop.REPEATING, 0, 3, 1.0F);
         sprint.setPlayCondition(a -> this.isMoving() && this.syncedState() == GTState.CHASE);
         sprint.blendInMs(400).blendOutMs(400);
+
+        // Las pisadas, en los frames medidos sobre cada clip. onFrame corre sólo en servidor, que es
+        // donde tienen que salir las partículas y las sacudidas.
+        walk.onFrame(WALK_LEFT_FOOTFALL, entity -> this.onFootfall(true, WALK_SHAKE_AMPLITUDE));
+        walk.onFrame(WALK_RIGHT_FOOTFALL, entity -> this.onFootfall(false, WALK_SHAKE_AMPLITUDE));
+        sprint.onFrame(SPRINT_LEFT_FOOTFALL, entity -> this.onFootfall(true, SPRINT_SHAKE_AMPLITUDE));
+        sprint.onFrame(SPRINT_RIGHT_FOOTFALL, entity -> this.onFootfall(false, SPRINT_SHAKE_AMPLITUDE));
 
         // Y andar deja de valer mientras persigue, o los dos ciclos se pelean por la misma capa.
         walk.setPlayCondition(a -> this.isMoving() && this.syncedState() != GTState.CHASE);
