@@ -70,6 +70,15 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
      * sit-and-blink on the way up.
      */
     private boolean startled;
+    /** Ticks spent in {@link SleepPhase#SLEEPING}, counted so the wake lands on the loop's seam. */
+    private int sleptTicks;
+    /**
+     * A wake that has been decided but not yet acted on, because the {@code sleep} loop is mid-cycle.
+     * Latched rather than re-asked each tick: {@link #shouldWakeUp()} consumes the wake request and
+     * resets the threat-scan cooldown, so asking twice would lose the very "was hit" signal that
+     * {@link #startled} is read from.
+     */
+    private boolean wakePending;
 
     public SleepGoal(T mob, SleepUrge urge) {
         this.mob = mob;
@@ -127,7 +136,11 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
 
         // Sleeping is the one phase with no timer: it lasts until something ends it.
         if (this.mob.sleepPhase() == SleepPhase.SLEEPING) {
-            if (this.shouldWakeUp()) {
+            this.sleptTicks++;
+            if (!this.wakePending && this.shouldWakeUp()) {
+                this.wakePending = true;
+            }
+            if (this.wakePending && this.atSleepLoopSeam()) {
                 this.beginLeaving();
             }
             return;
@@ -156,6 +169,33 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
     }
 
     /**
+     * Whether the {@code sleep} loop is at the frame it started on, which is the only frame the
+     * wake may begin from.
+     *
+     * <p><b>Same rule that whole-loop sitting already follows, and for the same reported symptom.</b>
+     * Sleeping ends whenever dawn or a threat says so, so without this the loop is cut wherever it
+     * happened to be and {@code awakening} is handed that pose instead of the one it was authored
+     * from. Measured on the Grand Tyrant, a mid-cycle cut hands over a head 15.0° away from where
+     * {@code awakening} starts, arms 14.2° and {@code tail1} 12.5°; on the seam the same numbers are
+     * 10.1°, 0° and 0°. The blend then has to swallow the difference inside its own ramp, which does
+     * not merely soften it — it plays the incoming clip through a rising weight, so the pose lurches
+     * to well over the authored speed halfway through. Cutting on the seam is what stops that.
+     *
+     * <p>The wait is bounded by one cycle of the clip — 4.4 s on the Grand Tyrant — and only ever
+     * delays the <em>start</em> of a leisurely wake. A mob that was struck leaves at once:
+     * {@link #startled} is the "was hit" signal, and nothing about being hit deserves to wait for a
+     * breath to finish. A species with no {@code sleep} clip has no loop to align to and is likewise
+     * never held.
+     */
+    private boolean atSleepLoopSeam() {
+        if (this.startled) {
+            return true;
+        }
+        int loopTicks = this.mob.sleepPhaseDuration(SleepPhase.SLEEPING);
+        return loopTicks <= 0 || this.sleptTicks % loopTicks == 0;
+    }
+
+    /**
      * Moves into {@code phase}, skipping any the mob has no clip for, and ends the cycle on
      * {@link SleepPhase#NONE}.
      */
@@ -163,6 +203,12 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
         if (phase == SleepPhase.NONE) {
             this.mob.setSleepPhase(SleepPhase.NONE);
             return;
+        }
+        if (phase == SleepPhase.SLEEPING) {
+            // The clip starts on this very tick (onSleepPhaseBegin, below), so counting from zero
+            // here is what makes sleptTicks and the loop's own cycle the same clock.
+            this.sleptTicks = 0;
+            this.wakePending = false;
         }
         this.mob.setSleepPhase(phase);
         this.phaseTimer = this.mob.sleepPhaseDuration(phase);
@@ -259,6 +305,7 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
         this.mob.setSleepPhase(SleepPhase.NONE);
         this.leaving = false;
         this.startled = false;
+        this.wakePending = false;
         this.urge.noteWokeUp();
     }
 
