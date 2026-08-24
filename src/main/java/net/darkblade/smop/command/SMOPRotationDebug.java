@@ -28,8 +28,8 @@ import java.util.List;
  *
  * <ul>
  *   <li>{@code rumbo} ({@code getYRot}) — a dónde ha decidido ir. No se dibuja en ninguna parte.</li>
- *   <li>{@code cuerpo} ({@code yBodyRot}) — <b>el que se dibuja</b>. Persigue al rumbo mientras anda
- *       y a la cabeza mientras está parado.</li>
+ *   <li>{@code cuerpo} ({@code yBodyRot}) — <b>el que se dibuja</b>. En este bicho persigue al rumbo
+ *       ande o esté parado, que es lo que {@code GTBodyRotation} añade al control de la librería.</li>
  *   <li>{@code cabeza} ({@code yHeadRot}) — sólo se separa del cuerpo si algo la mueve, y en este
  *       bicho eso es únicamente el {@code setLookAt} de la persecución.</li>
  * </ul>
