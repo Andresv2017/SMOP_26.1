@@ -52,8 +52,22 @@ public final class GroundCrackFx {
     private static final int RIM_STAGE = 4;
     private static final int FOOT_STAGE = 8;
 
-    /** Ticks que dura una grieta antes de borrarse. El legacy usaba 22 y se lee bien. */
-    private static final int TTL_TICKS = 22;
+    /**
+     * Cuánto aguanta una grieta a plena profundidad antes de empezar a cerrarse.
+     *
+     * <p>Cinco segundos, contra los 22 ticks del legacy. Con 22 no daba tiempo ni a ver el pisotón
+     * entero: sus tres impactos caen en los ticks 14, 26 y 46 del clip, así que las grietas del
+     * primero se borraban ANTES de que llegara el tercero y el suelo parpadeaba en vez de resentirse.
+     */
+    private static final int HOLD_TICKS = 100;
+
+    /**
+     * Y luego se cierran solas, bajando de etapa, en vez de esfumarse de un frame para otro.
+     *
+     * <p>Tres segundos para las ocho etapas: se va viendo cómo el suelo se recompone. Desaparecer de
+     * golpe era lo que hacía que el efecto se sintiera apagado por un temporizador y no curado.
+     */
+    private static final int FADE_TICKS = 60;
 
     /**
      * Intentos de agrietar por impacto. Salen menos posiciones que intentos porque dos tiradas pueden
@@ -65,7 +79,11 @@ public final class GroundCrackFx {
     /** Cuánto se busca suelo hacia abajo desde la altura del bicho. */
     private static final int GROUND_SEARCH_DOWN = 6;
 
-    private record Crack(int id, int ttl, int stage) {}
+    /**
+     * @param baseStage la profundidad que alcanzó, de la que se parte al cerrarse
+     * @param shownStage la que está pintada ahora mismo, para no reenviarla cada tick
+     */
+    private record Crack(int id, int ticksLeft, int baseStage, int shownStage) {}
 
     private static final Map<BlockPos, Crack> ACTIVE = new HashMap<>();
 
@@ -108,7 +126,7 @@ public final class GroundCrackFx {
             level.addParticle(new BlockParticleOption(ParticleTypes.BLOCK, state),
                     ground.getX() + 0.5D, ground.getY() + 1.0D, ground.getZ() + 0.5D,
                     0.0D, 0.05D, 0.0D);
-            add(ground, TTL_TICKS, stageFor(normalized));
+            add(ground, stageFor(normalized));
         }
     }
 
@@ -124,15 +142,16 @@ public final class GroundCrackFx {
      * Añade una grieta, o profundiza la que ya hubiera ahí y le renueva el plazo. Profundizar es lo
      * que encadena los tres impactos del pisotón en un solo gesto.
      */
-    public static void add(@NotNull BlockPos pos, int ttl, int stage) {
+    public static void add(@NotNull BlockPos pos, int stage) {
         LevelRenderer renderer = Minecraft.getInstance().levelRenderer;
         BlockPos key = pos.immutable();
         Crack existing = ACTIVE.get(key);
         int id = existing != null ? existing.id() : stableId(key);
         int finalStage = existing != null
-                ? Math.min(MAX_STAGE, existing.stage() + 1)
+                ? Math.min(MAX_STAGE, existing.baseStage() + 1)
                 : Math.min(MAX_STAGE, stage);
-        ACTIVE.put(key, new Crack(id, Math.max(1, ttl), finalStage));
+        // El plazo se renueva entero: manda el impacto más reciente, no el primero.
+        ACTIVE.put(key, new Crack(id, HOLD_TICKS + FADE_TICKS, finalStage, finalStage));
         renderer.destroyBlockProgress(id, key, finalStage);
     }
 
@@ -146,15 +165,24 @@ public final class GroundCrackFx {
         while (it.hasNext()) {
             Map.Entry<BlockPos, Crack> entry = it.next();
             Crack crack = entry.getValue();
-            int left = crack.ttl() - 1;
-            if (left <= 0) {
+            int left = crack.ticksLeft() - 1;
+            // Aguanta a plena profundidad y, pasado el plazo, se va cerrando etapa a etapa.
+            int stage = left >= FADE_TICKS
+                    ? crack.baseStage()
+                    : Math.round(crack.baseStage() * (float) left / FADE_TICKS);
+            if (stage <= 0) {
                 // -1 es como el renderer borra una entrada de rotura. Sin esto la grieta se queda
                 // pintada para siempre, que es el modo de fallo feo de este efecto.
                 renderer.destroyBlockProgress(crack.id(), entry.getKey(), -1);
                 it.remove();
                 continue;
             }
-            entry.setValue(new Crack(crack.id(), left, crack.stage()));
+            // Sólo se reenvía cuando la etapa CAMBIA. Repintar 76 bloques cada tick durante ocho
+            // segundos sería tirar trabajo del renderer para dibujar lo mismo.
+            if (stage != crack.shownStage()) {
+                renderer.destroyBlockProgress(crack.id(), entry.getKey(), stage);
+            }
+            entry.setValue(new Crack(crack.id(), left, crack.baseStage(), stage));
         }
     }
 
