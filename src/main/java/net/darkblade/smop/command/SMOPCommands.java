@@ -47,7 +47,8 @@ public final class SMOPCommands {
                 .then(SMOPSpawnDebug.build())
                 .then(SMOPNestDebug.build())
                 .then(SMOPBiteDebug.build())
-                .then(SMOPDeathDebug.build()));
+                .then(SMOPDeathDebug.build())
+                .then(SMOPRotationDebug.build()));
     }
 
     /** One {@code <name> [pos]} literal, spawning {@code type} as a baby at the given or current position. */

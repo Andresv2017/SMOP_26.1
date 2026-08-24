@@ -79,95 +79,48 @@ import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-/**
- * The Kriftognathus: a pterosaur-ish scavenger that wears the colours of the biome it hatched in,
- * and — once tamed — perches over its owner's head as a parachute (see {@link #tickPerch}), posing
- * them gripping its legs with both arms via {@code KriftognathusRenderer}.
- */
 public class KriftognathusEntity extends SMOPFlyingAnimal
         implements ISleepThreatEvaluator, ISleepAwareness, CustomEggBorn, Perchable {
 
     // ───────────────────────────────────────────────────── TUNING ─────
 
-    /** Length of the {@code attack} clip, and the frames its beak connects on. */
     private static final float ATTACK_SECONDS = 0.4F;
     private static final int BITE_WINDOW_START = 2;
     private static final int BITE_WINDOW_END = 4;
 
-    /** Matches {@code AnimatableMeleeAttackGoal}'s own reach (2.0F) with room to spare — same
-     *  face-lock radius the Tangoftero uses, for the identical reason (see {@link #faceCombatTarget()}). */
     private static final double FACE_LOCK_RADIUS = 4.0D;
-    /** Fast snap-to-target, only used at melee range. Cruise flight turns at
-     *  {@code getFlightYawTurnSpeed()} (8°/tick) for smooth arcs; landing a bite needs far more. */
     private static final float COMBAT_TURN_SPEED = 40.0F;
 
-    /** How long the glide's slow-falling is granted for, and the remaining duration below which it
-     *  is topped back up — see {@link #applyGlideEffect}. Comfortably longer than the refresh point
-     *  so the effect can never lapse between ticks. */
     private static final int GLIDE_EFFECT_DURATION = 40;
     private static final int GLIDE_EFFECT_REFRESH_BELOW = 20;
 
-    /** Clip names the flight lifecycle drives, by the same convention as {@code ANIM_SLEEP} and co. */
     private static final String ANIM_START_FLIGHT = "start_flight";
     private static final String ANIM_LANDING = "landing";
-    /** The committed power dive. Not part of the landing cycle — see {@link #onSeekGroundBegin()}. */
     private static final String ANIM_SWOOP = "swoop";
-    /** Jaw-only overlay {@code attack} swaps for on a mid-air bite — see {@link #registerAnimations()}. */
     private static final String ANIM_BITE_FLIGHT = "bite_flight";
-    /** Also the {@code startAction} name TameFeedGoal closes the ritual with. */
     public static final String ANIM_TAMED = "tamed";
-    /** Extra ground time after the {@code tamed} clip. @see #onActionStart(String) */
     private static final int TAMED_GROUND_HOLD_TICKS = 40;
-    /** The ambient call, driven by {@link IdleAnimationGoal}. @see #registerGoals() */
     private static final String ANIM_SQUAWK = "squawk";
-    /** Clip frame the call sounds on. @see #registerAnimations() */
     private static final float SQUAWK_SOUND_FRAME = 3.0F;
-    /** Floor between two ambient calls, in ticks. @see #registerGoals() */
     private static final int SQUAWK_COOLDOWN_TICKS = 120;
-    /** Random spread added on top, so the calls do not come out metronomic. */
     private static final int SQUAWK_COOLDOWN_SPREAD_TICKS = 120;
 
-    /** Wild nest defence: what it will actually see off. */
     private static final Predicate<LivingEntity> NEST_THREAT_SELECTOR =
             entity -> entity.getType() == EntityType.SNIFFER || entity.getType() == EntityType.FOX;
 
-    /** Feedings required to complete the ground-taming ritual — see {@link TameFeedGoal}. */
     private static final int FEED_GOAL_MIN = 3;
     private static final int FEED_GOAL_MAX = 4;
 
-    /**
-     * How much longer the sleep-cycle transitions take than they were authored. The clips are 0.3–0.5 s
-     * — six to ten ticks — which is quick enough that the mob reads as snapping between poses rather
-     * than moving between them. One knob for all four; see {@link #slowTransition}.
-     */
     private static final float TRANSITION_SLOWDOWN = 2.5F;
 
     private static final EntityDataAccessor<String> SPAWN_BIOME =
             SynchedEntityData.defineId(KriftognathusEntity.class, EntityDataSerializers.STRING);
-    /** Entity id of the player this one is perched on, or -1. Synced because the whole client half
-     *  of perching reads it every tick over every rendered entity — see {@link Perchable#getPerchTargetId()}. */
     private static final EntityDataAccessor<Integer> PERCH_TARGET_ID =
             SynchedEntityData.defineId(KriftognathusEntity.class, EntityDataSerializers.INT);
-    /**
-     * Perched <em>and</em> actually carrying a falling host — the parachute working, as opposed to
-     * just riding along on someone walking about.
-     *
-     * <p>Synced for the same reason {@code FLYING_MOVING} is: play conditions are evaluated on both
-     * sides ({@code MobAnimator}'s auto-start loop runs on the client too), and the host's fall state
-     * is a server-side read, so a client computing this locally would disagree and fight the sync
-     * packets. The host pose picks off it as well — see {@code KriftognathusRenderer#applyHostPose}.
-     */
+
     private static final EntityDataAccessor<Boolean> PERCH_GLIDING =
             SynchedEntityData.defineId(KriftognathusEntity.class, EntityDataSerializers.BOOLEAN);
-    /**
-     * What a wild Krifto is currently carrying off in its hind legs after a successful heist — see
-     * {@link StealFromPlayerGoal}. {@link ItemStack#EMPTY} when nothing was stolen.
-     *
-     * <p>Deliberately not written to NBT: a heist runs its course in a matter of seconds (orbit, dive,
-     * snatch, flee, drop), so a save/load landing in that narrow window losing the item is an
-     * acceptable trade against hand-rolling {@code ItemStack} codec plumbing nothing else in this mod
-     * needs yet — same call as the scripted-action state in {@code SMOPAnimal}.
-     */
+
     private static final EntityDataAccessor<ItemStack> STOLEN_ITEM =
             SynchedEntityData.defineId(KriftognathusEntity.class, EntityDataSerializers.ITEM_STACK);
 
@@ -177,22 +130,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── PERCH ─────
 
-    /**
-     * Perching, not riding. The player is never a passenger: they keep their own body, their own
-     * physics and their own WASD, and Krifto is welded above their head — which is the whole shape of
-     * a parachute, and the reason the vanilla passenger system was the wrong tool here. Riding makes
-     * the VEHICLE authoritative and derives the passenger's position from it, so a parachute built
-     * that way has to fight the framework at every step: the mob has to be lifted to head height on
-     * mount and kept there, the player's input has to be plumbed back down to drive a vehicle that is
-     * really just cargo, and the rider's real position and drawn position have to be kept in sync by
-     * hand. Perching inverts exactly those three things for free.
-     */
     @Override
     public int getPerchTargetId() {
         return this.entityData.get(PERCH_TARGET_ID);
     }
 
-    /** Perched and carrying a falling host — see {@link #PERCH_GLIDING}. */
     public boolean isPerchGliding() {
         return this.entityData.get(PERCH_GLIDING);
     }
@@ -202,8 +144,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return KriftoPerchPlacement.current();
     }
 
-    /** Over the head, where the first-person hand chain cannot represent it — and where you would
-     *  not see it from inside your own eyes anyway. */
     @Override
     public boolean renderPerchedInFirstPerson() {
         return false;
@@ -221,21 +161,10 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         PerchManager.begin(player, this);
     }
 
-    /** Deliberate release — sneaking, or the bird being told to get off. Forgets the host with it. */
     private void stopPerching() {
         this.endPerch(true);
     }
 
-    /**
-     * Releases the perch, optionally keeping the host on file.
-     *
-     * <p>The distinction matters at exactly one moment: a player logging out. {@link #tickPerch} drops
-     * the perch as soon as the host stops resolving, and if that tick lands before the world is
-     * written, clearing the UUID there would erase the very thing
-     * {@link #addAdditionalSaveData} needs — the bird would come back off the head every single time,
-     * which is the bug this pairs with. So a host who merely <em>vanished</em> is remembered, and only
-     * an explicit dismount forgets.
-     */
     private void endPerch(boolean forgetHost) {
         if (this.level().getEntity(this.getPerchTargetId()) instanceof Player host) {
             PerchManager.end(host);
@@ -254,43 +183,17 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── PERCH ACROSS RELOAD ─────
 
-    /**
-     * UUID of the host this is perched on, or {@code null}. The synced {@link #PERCH_TARGET_ID} is an
-     * <em>entity id</em>, which is assigned per session and means nothing after a reload — this is the
-     * half of the perch that can actually be written to NBT.
-     */
     @Nullable
     private UUID perchHostId;
-    /** Ticks left to find {@link #perchHostId} after a reload before giving up. @see #tickPerchRestore */
     private int perchRestoreTicks;
 
-    /** How long to wait for the host to turn up. Long enough for a login to finish, short enough that
-     *  a bird whose owner never returns is not stuck waiting. */
     private static final int PERCH_RESTORE_WINDOW_TICKS = 100;
 
-    /**
-     * Puts the bird back on the head it was on before the world was saved.
-     *
-     * <p>Perching is held in two places, and only one of them survives: the synced entity id (gone —
-     * entity data is not persisted) and {@code PerchManager}'s registry (gone — an in-memory
-     * {@code Map<UUID, Perchable>}). So the perch has to be rebuilt from the one durable thing, the
-     * host's UUID, once that player is resolvable again. The player usually loads before the entity
-     * ticks, so in practice this succeeds on the first attempt and the bird is simply still there.
-     *
-     * <p>{@link #readAdditionalSaveData} has already dropped the no-gravity by this point, so a host
-     * who never appears leaves a bird that falls normally rather than one hanging in the sky — which
-     * is exactly the bug this pairs with. Failing to restore is therefore safe, and bounded.
-     */
     private void tickPerchRestore() {
         if (this.perchHostId == null || this.isPerched() || this.perchRestoreTicks <= 0) {
             return;
         }
         if (this.isBaby()) {
-            // Can't happen through mobInteract (adult-only, see there), but this reads the saved
-            // UUID back unconditionally, so it gets its own check rather than trusting that gate
-            // stays the only path in here forever. Forgets the host outright rather than leaving the
-            // countdown to run out on its own: a baby is never getting a host back regardless of how
-            // long tickPerchRestore keeps being asked, so there is nothing to wait out.
             this.perchHostId = null;
             this.perchRestoreTicks = 0;
             return;
@@ -300,16 +203,9 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
             this.startPerching(host);
             return;
         }
-        // Window closed without the host turning up. The UUID is deliberately NOT cleared: they may
-        // simply be offline, or in another dimension, and the next load gets a fresh window. Nothing
-        // is left running in the meantime — the countdown is only ever armed by a load.
         this.perchRestoreTicks--;
     }
 
-    /**
-     * Server-side release, driven by the library's dismount packet. Re-checks ownership rather than
-     * trusting the request, as {@link Perchable#tryStopPerching} requires.
-     */
     @Override
     public void tryStopPerching(@NotNull ServerPlayer player) {
         if (this.isPerched() && this.isOwnedBy(player)) {
@@ -317,23 +213,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
-    /**
-     * Pins the mob to its host and slows their fall — the entire mechanic, in one method.
-     *
-     * <p>Position is written directly rather than through the passenger system on purpose (see
-     * {@link #getPerchTargetId()}); {@link KriftoPerchPlacement} is the single source of both this
-     * hitbox placement and the client's drawing of it.
-     */
     private void tickPerch() {
         if (!(this.level().getEntity(this.getPerchTargetId()) instanceof Player host) || !host.isAlive()) {
-            // Gone, not dismissed — a logout looks exactly like this. Keep the host on file so the
-            // bird is back on their head next time they load in. @see #endPerch
             this.endPerch(false);
             return;
         }
-        // Sneaking is THE way off, and the only one. Right-clicking the bird does not toggle it back
-        // down (see #mobInteract) — a hitbox welded to your own head is awkward to aim at, and the
-        // library's own right-click-anywhere release is the Owl's gesture, gated to the Owl.
         if (host.isShiftKeyDown()) {
             this.stopPerching();
             return;
@@ -343,8 +227,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         float yawRad = host.getYRot() * ((float) Math.PI / 180.0F);
         double sin = Math.sin(yawRad);
         double cos = Math.cos(yawRad);
-        // Host's right is (-cos, -sin), forward is (-sin, cos) — the same basis PerchClient walks in
-        // when it draws this, so what you see and what you can touch stay in one place.
         this.setPosRaw(
                 host.getX() - cos * placement.side() - sin * placement.forward(),
                 host.getY() + placement.height(),
@@ -366,22 +248,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
                 !host.onGround() && !host.isInWater() && host.getDeltaMovement().y < 0.0D);
     }
 
-    /**
-     * The parachute itself. Slow falling rather than a hand-written velocity clamp, and the
-     * difference is not stylistic:
-     *
-     * <p>A player's movement is client-authoritative. Writing {@code setDeltaMovement} on the
-     * server's copy does nothing unless it is force-synced ({@code hurtMarked}), and force-syncing it
-     * every tick ships a velocity packet that overwrites whatever the client just simulated — which
-     * takes their air control with it. That is exactly why WASD died mid-fall.
-     *
-     * <p>{@code SLOW_FALLING} is computed inside {@code LivingEntity}'s own physics
-     * (gravity clamped to 0.01 while falling, and {@code fallDistance} reset every tick, so fall
-     * damage is handled too), so the client applies it itself. No packets, no fight, steering intact.
-     *
-     * <p>Applied invisibly and refreshed only as it runs low, rather than re-added every tick, so it
-     * neither shows up in the HUD nor spams effect-update packets.
-     */
     private void applyGlideEffect(@NotNull Player host) {
         MobEffectInstance current = host.getEffect(MobEffects.SLOW_FALLING);
         if (current == null || current.getDuration() < GLIDE_EFFECT_REFRESH_BELOW) {
@@ -390,8 +256,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
-    /** Drops the glide effect, but only if it looks like ours — a potion-brewed slow falling is
-     *  visible, this one is not, so an unperch never strips a buff the player actually drank. */
     private void clearGlideEffect(@NotNull Player host) {
         MobEffectInstance current = host.getEffect(MobEffects.SLOW_FALLING);
         if (current != null && !current.isVisible()) {
@@ -399,14 +263,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
-    /** Perched counts as pinned, so every movement goal stands down. */
     @Override
     public boolean isMovementLocked() {
         return super.isMovementLocked() || this.isPerched();
     }
 
-    /** Welded to a host, so nothing may shove it off — {@link #tickPerch} would snap it back anyway,
-     *  which reads as jitter rather than a push. */
     @Override
     public boolean isPushable() {
         return !this.isPerched();

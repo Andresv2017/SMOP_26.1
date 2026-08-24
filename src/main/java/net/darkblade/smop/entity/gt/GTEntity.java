@@ -86,10 +86,24 @@ import java.util.UUID;
  */
 public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animatable<GTEntity>, ISleepingEntity {
 
-    /** What the legacy's own {@code GTMoveControl} turned at: 5 degrees per tick, and no more. */
-    private static final float TURN_SPEED = 5.0F;
-    /** Three times that in combat, still far below the Minotaur's 40 — a boss has to be circleable. */
-    private static final float COMBAT_TURN_SPEED = 15.0F;
+    /**
+     * Dos y medio, no los cinco del legacy: es la mitad del "cinemático" que se pidió.
+     *
+     * <p>Con esto un viraje de noventa grados le lleva treinta y seis ticks — casi dos segundos de
+     * girar, tiempo de sobra para que la onda de {@code GTSpineTurn} recorra la columna entera. A
+     * cinco grados por tick el giro se acababa antes de que la cola se enterara.
+     *
+     * <p><b>No se toca solo.</b> El hueco que alimenta la cascada vale {@code esta velocidad /
+     * BODY_LAG_MOVING}, así que bajar sólo este número ENCOGE la cascada. Los dos van juntos.
+     */
+    private static final float TURN_SPEED = 2.5F;
+    /**
+     * Siete en combate, no quince. Sigue siendo casi el triple que el paseo —hay que poder encararte—
+     * pero quince hacía que la persecución girara de golpe y se comiera todo el peso que el paseo
+     * acababa de ganar. El techo de {@code GTBodyRotation} es lo que impide que este número, al ser el
+     * más alto de los dos, deje al bicho andando de lado.
+     */
+    private static final float COMBAT_TURN_SPEED = 7.0F;
     /**
      * Generous on purpose: its attacks reach 6 to 9 blocks and the body has to keep orienting inside
      * that radius instead of freezing the moment it arrives.
@@ -111,11 +125,12 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
      * retraso es la señal que la columna propaga: sin hueco no hay nada que cascadear y el bicho gira
      * de una pieza por muy bien montada que esté la cadena de muelles.
      *
-     * <p>Con el rumbo girando a los 5 grados/tick de {@code TURN_SPEED}, el 36% de la librería deja un
-     * retraso estacionario de unos 14 grados; el 22% lo sube a unos 25. <b>Éste es el mando a tocar si
-     * el giro se siente flojo o exagerado</b> — bajarlo pesa más, subirlo lo hace más ágil.
+     * <p>Con el rumbo girando a los 2.5 grados/tick de {@code TURN_SPEED}, el 36% de la librería
+     * dejaría un retraso de 7 grados —invisible— y el 9% lo pone en unos 28. <b>Éste es el mando a
+     * tocar si el giro se siente flojo o exagerado</b>: bajarlo pesa más, subirlo lo hace más ágil. En
+     * combate el mismo 9% pediría 78 grados, y ahí es donde entra el techo de {@code GTBodyRotation}.
      */
-    private static final float BODY_LAG_MOVING = 0.22F;
+    private static final float BODY_LAG_MOVING = 0.09F;
 
     private final MobAnimator<GTEntity> animator;
 
@@ -135,7 +150,7 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
 
     @Override
     protected @NotNull BodyRotationControl createBodyControl() {
-        SmoothBodyRotationControl<GTEntity> control = new SmoothBodyRotationControl<>(this);
+        SmoothBodyRotationControl<GTEntity> control = new GTBodyRotation(this);
         control.bodyLagStill = BODY_LAG_STILL;
         control.bodyLagMoving = BODY_LAG_MOVING;
         control.bodyMax = BODY_MAX_TURN;
@@ -205,6 +220,13 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                         new HurtByAttackerTargeting<>(GRUDGE_TICKS)))
                 .register(GTState.WANDER, new WanderBehavior<GTEntity, GTState>(1.0D)
                         .wanderRange(WANDER_RANGE_H, WANDER_RANGE_V)
+                        // TEMPORAL, para poder mirarlo andar. El defecto es 0.01, o sea una tirada por
+                        // tick al llegar: unos cinco segundos plantado entre paseo y paseo, que para
+                        // juzgar cómo gira es insufrible. Con 0.12 apenas para.
+                        //
+                        // DEVOLVER A 0.01 —o quitar la línea— antes de dar el módulo por bueno: un
+                        // jefe que no se está quieto nunca es otra criatura.
+                        .wanderChance(0.12F)
                         .onTargetFound(GTState.CHASE))
                 // 2.0, el doble del deambular: es el CHASE_SPEED del legacy, y sin él la persecución
                 // va exactamente igual de rápido que el paseo — reportado desde el juego.

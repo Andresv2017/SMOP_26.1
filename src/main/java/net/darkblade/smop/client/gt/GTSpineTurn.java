@@ -49,27 +49,37 @@ public final class GTSpineTurn implements RigComponent<GTModel> {
     /**
      * Un eslabón de la columna.
      *
-     * @param transmit cuánto del eslabón anterior recoge éste. Negativo = va al revés (contragiro).
+     * @param factor qué parte del hueco de giro le toca a ESTE hueso. Negativo = contragiro.
      * @param maxDegrees tope, para que un giro de 180 no le desmonte el cuello
      * @param responseHz frecuencia de su muelle. Más baja = llega más tarde = pesa más.
      */
-    private record Link(Function<GTModel, ModelPart> part, float transmit, float maxDegrees,
+    private record Link(Function<GTModel, ModelPart> part, float factor, float maxDegrees,
                         float responseHz) {}
 
     /**
-     * De la cabeza a la punta de la cola. El orden importa: cada uno persigue al de arriba.
+     * De la cabeza a la punta de la cola, en orden de RETARDO: cada uno persigue al anterior.
      *
-     * <p>La cabeza transmite 1.0 y responde rápido, o sea que apunta a donde va el animal casi al
-     * instante — es lo que hace que parezca que el bicho decide y el cuerpo obedece. De ahí para abajo
-     * la transmisión y la frecuencia bajan, y en {@code tail1} el signo se invierte.
+     * <p><b>Los factores cuentan con que los huesos están anidados.</b> {@code head} cuelga de
+     * {@code neck} y éste de {@code body_parts}, así que sus rotaciones se SUMAN en el mundo. Los de
+     * delante suman 0.15 + 0.35 + 0.50 = 1.00, o sea que la cabeza acaba apuntando exactamente al
+     * rumbo, ni más ni menos. Tratarlos como independientes —el primer intento— ponía la cabeza al
+     * 175% del hueco.
+     *
+     * <p>La cola va en negativo y acumula al revés: 0.15 − 0.30 − 0.30 − 0.25, así que la punta barre
+     * unos 0.70 del hueco hacia el lado contrario. Un animal grande que gira a la derecha lanza la cola
+     * a la izquierda y la recoge después; sin ese contragiro la cola parece pegada con cola.
+     *
+     * <p>Simulado con un viraje de 90 grados a la velocidad de {@code TURN_SPEED}: la cabeza llega a
+     * 21 grados, la punta de la cola a 15 en sentido contrario, y entre que una y otra alcanzan su
+     * pico pasan 11 ticks. Ese medio segundo de diferencia ES el efecto.
      */
     private static final List<Link> CHAIN = List.of(
-            new Link(m -> m.head, 1.00F, 40.0F, 2.2F),
-            new Link(m -> m.neck, 0.45F, 22.0F, 1.6F),
-            new Link(m -> m.body_parts, 0.30F, 10.0F, 1.1F),
-            new Link(m -> m.tail1, -0.85F, 20.0F, 0.9F),
-            new Link(m -> m.tail2, 0.85F, 16.0F, 0.7F),
-            new Link(m -> m.tail3, 0.85F, 14.0F, 0.55F));
+            new Link(m -> m.head, 0.50F, 30.0F, 2.4F),
+            new Link(m -> m.neck, 0.35F, 22.0F, 1.7F),
+            new Link(m -> m.body_parts, 0.15F, 10.0F, 1.2F),
+            new Link(m -> m.tail1, -0.30F, 18.0F, 0.95F),
+            new Link(m -> m.tail2, -0.30F, 18.0F, 0.75F),
+            new Link(m -> m.tail3, -0.25F, 16.0F, 0.60F));
 
     /** Amortiguación de todos los muelles. Por debajo de 1 rebotan al terminar el giro. */
     private static final float DAMPING = 0.55F;
@@ -111,7 +121,10 @@ public final class GTSpineTurn implements RigComponent<GTModel> {
         float upstream = gap;
         for (int i = 0; i < CHAIN.size(); i++) {
             Link link = CHAIN.get(i);
-            float target = upstream * link.transmit();
+            // El objetivo es la pose del anterior SIN escalar. Escalarla aquí —lo que hacía el primer
+            // intento— multiplica los factores a lo largo de la cadena y la señal se apaga: medido, la
+            // punta de la cola se quedaba en 1.8 grados. La amplitud se aplica al SALIR, abajo.
+            float target = upstream;
             float omega = (float) (2.0 * Math.PI * link.responseHz());
             float remaining = dt;
             while (remaining > 0.0F) {
@@ -131,7 +144,8 @@ public final class GTSpineTurn implements RigComponent<GTModel> {
         }
         for (int i = 0; i < CHAIN.size(); i++) {
             Link link = CHAIN.get(i);
-            float amount = Mth.clamp(state.pose[i], -link.maxDegrees(), link.maxDegrees());
+            float amount = Mth.clamp(state.pose[i] * link.factor(),
+                    -link.maxDegrees(), link.maxDegrees());
             if (Math.abs(amount) < 0.05F) {
                 continue;
             }
