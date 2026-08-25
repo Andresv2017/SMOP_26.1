@@ -25,7 +25,6 @@ import net.darkblade.smop.entity.ai.goal.egg.EggGoalRegistry;
 import net.darkblade.smop.entity.ai.goal.egg.ProtectEggBaseGoal;
 import net.darkblade.smop.entity.ai.goal.flying.FollowOwnerFlyingGoal;
 import net.darkblade.smop.entity.egg.CustomEggBorn;
-import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
 import net.darkblade.smop.entity.sleep.SleepPhase;
 import net.darkblade.smop.entity.tame.TameProgress;
@@ -80,7 +79,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class KriftognathusEntity extends SMOPFlyingAnimal
-        implements ISleepThreatEvaluator, ISleepAwareness, CustomEggBorn, Perchable {
+        implements ISleepThreatEvaluator, CustomEggBorn, Perchable {
 
     // ───────────────────────────────────────────────────── TUNING ─────
 
@@ -1133,12 +1132,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     }
 
     // ───────────────────────────────────────────────────── SLEEP ─────
-
-    /** Sleeps through players; wakes for the things that would actually eat it. */
-    @Override
-    public boolean shouldWakeOnPlayerProximity() {
-        return false;
-    }
 
     @Override
     public boolean shouldInterruptSleepDueTo(@NotNull LivingEntity nearby) {

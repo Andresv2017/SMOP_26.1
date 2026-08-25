@@ -310,10 +310,9 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
     }
 
     /**
-     * Nearby entities worth waking for. A {@link Player} counts if they are playing for real —
-     * neither creative nor spectator — unless the mob opts out via {@link ISleepAwareness};
-     * otherwise {@link ISleepThreatEvaluator} decides, falling back to the mob's
-     * {@link ISleepingEntity#getInterruptingEntityTypes()} set.
+     * Nearby entities worth waking for. Every mob wakes for a player who is playing for real —
+     * neither creative nor spectator. For anything else {@link ISleepThreatEvaluator} decides,
+     * falling back to the mob's {@link ISleepingEntity#getInterruptingEntityTypes()} set.
      */
     private List<LivingEntity> findThreats() {
         return this.mob.level().getEntitiesOfClass(LivingEntity.class,
@@ -325,16 +324,15 @@ public class SleepGoal<T extends Mob & ISleepingEntity> extends Goal {
         if (nearby == this.mob || !nearby.isAlive()) {
             return false;
         }
-        // Only a player who can actually be hurt is worth waking for. Creative and spectator players
-        // are excluded together, which is the same test targeting already uses across the mod — and
-        // it has to stay the same test, or a mob would ignore you while asleep and then hunt you the
-        // moment it woke. Adventure counts as survival here for exactly that reason.
+        // Every mob wakes for a player who can actually be hurt. Creative and spectator are excluded
+        // together, the same test targeting uses across the mod — and it has to stay the same test, or
+        // a mob would ignore you asleep and hunt you the moment it woke. Adventure counts as survival.
         //
-        // Spectator was already excluded; creative was not, so anyone flying past in creative woke
-        // every sleeping mob in the mod, which made the sleep cycle impossible to watch while
-        // building it.
-        if (nearby instanceof Player player && !player.isSpectator() && !player.isCreative()) {
-            return !(this.mob instanceof ISleepAwareness aware) || aware.shouldWakeOnPlayerProximity();
+        // A player is decided here and never falls through to the rules below: those key off entity
+        // TYPE, and letting a creative player reach them would put the answer in the hands of a set
+        // that was never written with players in mind.
+        if (nearby instanceof Player player) {
+            return !player.isSpectator() && !player.isCreative();
         }
         if (this.mob instanceof ISleepThreatEvaluator evaluator) {
             return evaluator.shouldInterruptSleepDueTo(nearby);

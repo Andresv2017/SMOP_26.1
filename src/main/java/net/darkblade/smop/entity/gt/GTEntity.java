@@ -137,11 +137,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
     public GTEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
         this.animator = new MobAnimator<>(this);
-        // The legacy carried a 60-line GTMoveControl whose whole idea was to turn slowly and
-        // accelerate gradually. This does that, and additionally keeps steering at the target inside
-        // the face-lock radius — which the Nirasmosaurus port documents as the cause of a melee mob
-        // striking thin air: vanilla's MoveControl stops writing yRot the moment the goal halts
-        // navigation, and every hitbox is built off that yaw.
         this.moveControl = new DirectionalMoveControl<>(this)
                 .setTurnSpeed(TURN_SPEED)
                 .setCombatTurnSpeed(COMBAT_TURN_SPEED)
@@ -157,10 +152,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         return control;
     }
 
-    /**
-     * {@code Monster.createMonsterAttributes()} now that this is not an {@code Animal} — the same base
-     * every hostile uses, and it already carries {@code ATTACK_DAMAGE}.
-     */
     public static AttributeSupplier.Builder createAttributes() {
         return Monster.createMonsterAttributes()
                 .add(Attributes.MAX_HEALTH, 300.0D)
@@ -168,9 +159,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                 .add(Attributes.MOVEMENT_SPEED, 0.20D)
                 .add(Attributes.ATTACK_KNOCKBACK, 0.5D)
                 .add(Attributes.ATTACK_DAMAGE, 2.0D)
-                // The legacy called setMaxUpStep(2.5F); in 26.1 step height is an attribute. Two and a
-                // half blocks is a kerb to a six-block animal, and it is what keeps it from snagging on
-                // its own terrain.
                 .add(Attributes.STEP_HEIGHT, 2.5D);
     }
 

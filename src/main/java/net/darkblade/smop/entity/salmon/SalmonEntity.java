@@ -18,7 +18,6 @@ import net.darkblade.smop.entity.ai.goal.GenericBreedGoal;
 import net.darkblade.smop.entity.ai.goal.egg.EggGoalRegistry;
 import net.darkblade.smop.entity.ai.goal.egg.ProtectEggBaseGoal;
 import net.darkblade.smop.entity.ai.goal.salmon.SalmonDigGoal;
-import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -61,7 +60,7 @@ import java.util.function.Predicate;
  * <p>Hand it a pufferfish and it goes looking for sand, gravel, mud or dirt to root through; breed
  * it with cod and it spawns roe on the river floor.
  */
-public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluator, ISleepAwareness, SwimTilt {
+public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluator, SwimTilt {
 
     // ───────────────────────────────────────────────────── TUNING ─────
 
@@ -554,15 +553,9 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
 
     // ───────────────────────────────────────────────────── SLEEP ─────
 
-    /**
-     * No sleep clips are authored for this mob, so both phases resolve to 0 through
-     * {@code SMOPAnimal}'s clip lookup and the cycle goes straight from awake to asleep. It still
-     * settles at night — it just does it without a transition.
-     */
-    @Override
-    public boolean shouldWakeOnPlayerProximity() {
-        return false;
-    }
+    // No sleep clips are authored for this mob, so both phases resolve to 0 through SMOPAnimal's
+    // clip lookup and the cycle goes straight from awake to asleep. It still settles at night — it
+    // just does it without a transition.
 
     @Override
     public boolean shouldInterruptSleepDueTo(@NotNull LivingEntity nearby) {

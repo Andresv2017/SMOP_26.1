@@ -23,7 +23,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.phys.Vec2;
-import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -119,7 +118,7 @@ import java.util.function.Supplier;
  * covers. The Nirasmosaurus is rideable too, so that work is used twice.
  */
 public class HellHippoEntity extends GenderedSMOPAnimal
-        implements ISleepThreatEvaluator, ISleepAwareness, HasCustomInventoryScreen, RiderControllable {
+        implements ISleepThreatEvaluator, HasCustomInventoryScreen, RiderControllable {
 
     /** Tempts and breeds. Carrot and beef, as in 1.20.1. */
     private static final Ingredient FOOD_ITEMS = Ingredient.of(Items.CARROT, Items.BEEF);
@@ -1557,12 +1556,6 @@ public class HellHippoEntity extends GenderedSMOPAnimal
     @Override
     public @NotNull Set<EntityType<?>> getInterruptingEntityTypes() {
         return Set.of();
-    }
-
-    /** A player walking up is enough to rouse it — it is not a deep sleeper. */
-    @Override
-    public boolean shouldWakeOnPlayerProximity() {
-        return true;
     }
 
     /** Anything actively hunting it, which is what {@code getTarget} pointing back at it means. */

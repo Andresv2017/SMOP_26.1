@@ -19,7 +19,6 @@ import net.darkblade.smop.entity.ai.goal.SMOPRandomStrollGoal;
 import net.darkblade.smop.entity.ai.goal.egg.EggGoalRegistry;
 import net.darkblade.smop.entity.ai.goal.egg.ProtectEggBaseGoal;
 import net.darkblade.smop.entity.egg.RandomVariantCapable;
-import net.darkblade.smop.entity.sleep.ISleepAwareness;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -73,7 +72,7 @@ import java.util.function.Supplier;
  * that sends every undead nearby running.
  */
 public class TangofteroEntity extends SMOPAnimal
-        implements ISleepThreatEvaluator, ISleepAwareness, RandomVariantCapable {
+        implements ISleepThreatEvaluator, RandomVariantCapable {
 
     // ───────────────────────────────────────────────────── TUNING ─────
 
@@ -641,12 +640,6 @@ public class TangofteroEntity extends SMOPAnimal
     // No sleepPhaseDuration override: SMOPAnimal derives every phase length from the clip registered
     // under that phase's name, and getRoarDuration() from the roar clip. This mob registers no
     // sitting clips, so it simply never has those phases.
-
-    /** Sleeps right through players — only the undead are worth waking up for. */
-    @Override
-    public boolean shouldWakeOnPlayerProximity() {
-        return false;
-    }
 
     @Override
     public boolean shouldInterruptSleepDueTo(@NotNull LivingEntity nearby) {
