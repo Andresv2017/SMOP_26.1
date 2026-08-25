@@ -15,12 +15,9 @@ import org.jetbrains.annotations.NotNull;
 /**
  * The salmon. Geometry is the untouched Blockbench export.
  *
- * <p><b>Port note.</b> 1.20.1's {@code setupAnim} both drove ten {@code AnimationState}s by hand and
- * then layered a block of manual trigonometry on top — head/body/tail yaw and pitch derived from
- * {@code netHeadYaw}, {@code headPitch} and the entity's own {@code currentRoll} field, guarded by a
- * hand-written "not sleeping and not attacking" check. The {@link Rig} covers both halves: the
- * keyframe blend plays whatever the {@code MobAnimator} says is current, and a look-at chain
- * distributes the turn down head → body → tail, which is what the manual maths was approximating.
+ * <p>The {@link Rig} covers both halves of the pose: the keyframe blend plays whatever the
+ * {@code MobAnimator} says is current, and a look-at chain distributes the turn down
+ * head → body → tail rather than deriving those angles by hand.
  *
  * <p>Distributing it as a chain rather than dumping it on the head is what makes a fish read as a
  * fish: the body leads into the turn and the tail trails it. The old code did this with three

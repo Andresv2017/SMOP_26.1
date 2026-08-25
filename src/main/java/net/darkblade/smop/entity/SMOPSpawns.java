@@ -103,18 +103,16 @@ public final class SMOPSpawns {
                 .biomes(Biomes.BEACH, Biomes.OCEAN, Biomes.LUKEWARM_OCEAN, Biomes.WARM_OCEAN)
                 .submit();
 
-        // Grand Tyrant: peso 5, uno solo, llanura y desierto — los números del 1.20.1 sin tocar, y la
-        // categoría también, por decisión explícita.
+        // Grand Tyrant: weight 5, alone, plains and desert. CREATURE by explicit decision.
         //
-        // Aviso, no discusión: la instrumentación que se escribió para el Nirasmosaurus midió que
-        // CREATURE no está lleno sino saturado por un factor de tres a ocho, y que no se recupera —
-        // 27 a 79 contra un tope de 10 en cuatro sitios de un mundo nuevo, con el 100% de 4.335
-        // intentos muriendo en esa puerta. La causa es que NaturalSpawner cuenta getAllEntities() del
-        // nivel entero, así que cada vaca cargada gasta el mismo presupuesto. Lo esperable es que este
-        // mob no aparezca nunca en survival.
+        // A warning rather than an argument: instrumentation written for the Nirasmosaurus measured
+        // CREATURE not as full but as saturated by a factor of three to eight, and not recovering —
+        // 27 to 79 against a cap of 10 in four places of a fresh world, with 100% of 4,335 attempts
+        // dying at that gate. NaturalSpawner counts getAllEntities() for the whole level, so every
+        // loaded cow spends the same budget. Expect this mob never to appear in survival.
         //
-        // Se comprueba con /smop debug spawn con el bicho vivo. Si se confirma, MONSTER es una línea
-        // en SMOPEntities. No cambiar nada sin ese dato.
+        // Check with /smop debug spawn while one is alive. If it is confirmed, MONSTER is a one-line
+        // change in SMOPEntities. Do not change anything without that measurement.
         DeluxeBiomeSpawns.builder(SMOPEntities.GT::get, MobCategory.CREATURE)
                 .spawnRate(5, 1, 1)
                 .biomes(Biomes.PLAINS, Biomes.DESERT)

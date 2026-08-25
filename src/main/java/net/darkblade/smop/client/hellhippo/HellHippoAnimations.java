@@ -6,15 +6,12 @@ import net.minecraft.client.animation.Keyframe;
 import net.minecraft.client.animation.KeyframeAnimations;
 
 /**
- * Adult Hell Hippo clips, straight from the 1.20.1 Blockbench export, addressed against the
- * bone names in {@link HellHippoModel}.
+ * Adult Hell Hippo clips, addressed against the bone names in {@link HellHippoModel}.
  *
- * <p><b>Dropped channels.</b> The 1.20.1 export animated a {@code neck2} bone in {@code attack}, {@code bite}, {@code eat} and {@code shake}, which is absent from
- * {@link HellHippoModel}. That version resolved bones with {@code getAnyDescendantWithName(...).ifPresent(...)}
- * and silently skipped whatever it could not find, so those four channels never moved anything there either.
- * 26.1 instead throws {@code "Cannot animate X, which does not exist in model"} at bake time, on the
- * very first frame the mob renders. Removing them reproduces exactly what 1.20.1 showed, minus the
- * crash.
+ * <p><b>Dropped channels.</b> The export animated a {@code neck2} bone in {@code attack}, {@code bite},
+ * {@code eat} and {@code shake} that {@link HellHippoModel} does not define. A channel naming a bone
+ * the mesh lacks throws {@code "Cannot animate X, which does not exist in model"} at bake time, on the
+ * very first frame the mob renders — so they are dropped rather than carried.
  */
 public final class HellHippoAnimations {
 

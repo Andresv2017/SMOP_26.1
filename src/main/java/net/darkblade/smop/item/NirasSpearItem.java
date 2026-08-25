@@ -32,7 +32,7 @@ public class NirasSpearItem extends Item {
     /** Below this the throw is a fumble, not a throw. Vanilla's trident uses the same gate. */
     private static final int MIN_CHARGE_TICKS = 10;
 
-    /** Launch speed and spread, both inherited from the legacy's numbers. */
+    /** Launch speed and spread. */
     private static final float THROW_POWER = 2.5F;
     private static final float THROW_INACCURACY = 1.0F;
 

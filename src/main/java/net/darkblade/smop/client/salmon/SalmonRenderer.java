@@ -25,7 +25,7 @@ public class SalmonRenderer extends MobRenderer<SalmonEntity, SalmonRenderState,
     private static final Identifier MALE = SMOP.id("textures/entity/salmon/salmon_male.png");
     private static final Identifier FEMALE = SMOP.id("textures/entity/salmon/salmon_female.png");
 
-    /** Fry are the adult model at a third scale, as in 1.20.1. */
+    /** Fry are the adult model at a third scale. */
     private static final float BABY_SCALE = 0.3F;
 
     public SalmonRenderer(EntityRendererProvider.Context context) {
@@ -65,8 +65,8 @@ public class SalmonRenderer extends MobRenderer<SalmonEntity, SalmonRenderState,
     }
 
     /**
-     * 26.1 scales through the render state rather than by pushing a matrix in {@code render} — the
-     * override 1.20.1 used no longer receives the entity.
+     * Scaling goes through the render state: the {@code render} override no longer receives the
+     * entity.
      */
     @Override
     protected float getShadowRadius(@NotNull SalmonRenderState state) {

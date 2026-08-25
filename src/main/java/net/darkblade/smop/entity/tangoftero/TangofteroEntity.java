@@ -140,8 +140,8 @@ public class TangofteroEntity extends SMOPAnimal
     /**
      * Built from {@link Animal#createAnimalAttributes()}, not {@code createLivingAttributes()}.
      *
-     * <p>1.20.1 used the latter and it was fine. In 26.1 vanilla's {@code TemptGoal} reads
-     * {@code Attributes.TEMPT_RANGE} (TemptGoal.java:58), and an attribute the supplier never
+     * <p>Vanilla's {@code TemptGoal} reads {@code Attributes.TEMPT_RANGE} (TemptGoal.java:58), and an
+     * attribute the supplier never
      * declared throws {@code Can't find attribute minecraft:tempt_range} on the first tick.
      * {@code createAnimalAttributes()} is just {@code Mob.createMobAttributes().add(TEMPT_RANGE, 10)}
      * — the correct base for anything extending {@code Animal}.
@@ -172,8 +172,8 @@ public class TangofteroEntity extends SMOPAnimal
 
     /**
      * Priorities matter more than they used to: {@code SleepGoal} preempts everything below it
-     * through its MOVE/LOOK/JUMP flags, and following the owner now outranks wandering (on 1.20.1
-     * wandering sat above it and a {@code isFollowingOwner} flag was needed to break the tie).
+     * through its MOVE/LOOK/JUMP flags, and following the owner outranks wandering — with wandering
+     * above it, a flag is needed to break the tie.
      */
     @Override
     protected void registerGoals() {

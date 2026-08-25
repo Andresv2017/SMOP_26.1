@@ -40,13 +40,13 @@ import java.util.List;
  *       Break the surface and gravity returns on the same tick.</li>
  * </ul>
  *
- * <p>One target per throw, like the legacy and like the trident: {@link #findHitEntities} narrows the
+ * <p>One target per throw, like the trident: {@link #findHitEntities} narrows the
  * sweep to a single result and {@code dealtDamage} closes it afterwards, so a spear cannot rake a
  * crowd on one flight.
  */
 public class NirasSpearEntity extends AbstractArrow {
 
-    /** Flat, as in 1.20.1. Between an arrow's 2 and a trident's 8, which is where a javelin belongs. */
+    /** Between an arrow's 2 and a trident's 8, which is where a javelin belongs. */
     private static final float THROWN_DAMAGE = 4.0F;
 
     /** Vanilla's own trident value. See the class note: this is parity with it, not a novelty. */
@@ -134,8 +134,8 @@ public class NirasSpearEntity extends AbstractArrow {
      * Flat damage, not {@code speed * baseDamage}.
      *
      * <p>A thrown weapon is not a drawn one: the arrow formula exists to reward holding the string,
-     * and this already gates its own throw on a charge. The legacy dealt a flat 4 and that reads
-     * correctly, so the arrow pipeline is bypassed here rather than tuned around.
+     * and this already gates its own throw on a charge, so the arrow pipeline is bypassed here rather
+     * than tuned around.
      */
     @Override
     protected void onHitEntity(@NotNull EntityHitResult hitResult) {

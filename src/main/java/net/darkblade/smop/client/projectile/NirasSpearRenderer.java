@@ -16,9 +16,8 @@ import org.jetbrains.annotations.NotNull;
  * Draws the spear in flight, pointed the way it is travelling.
  *
  * <p>The two rotations are vanilla's, from {@code ThrownTridentRenderer}: yaw minus 90 and pitch plus
- * 90 turn a model authored standing upright into one lying along its own flight path. The legacy
- * renderer did the same arithmetic by hand off {@code yRotO}/{@code xRotO}; in 26.1 the interpolation
- * happens in {@link #extractRenderState} and the model never sees the entity.
+ * 90 turn a model authored standing upright into one lying along its own flight path. The
+ * interpolation happens in {@link #extractRenderState}, and the model never sees the entity.
  *
  * <p>It borrows vanilla's {@link ThrownTridentRenderState} rather than declaring one: the state
  * needed is exactly a yaw and a pitch, which is what that class holds. Its third field, the foil

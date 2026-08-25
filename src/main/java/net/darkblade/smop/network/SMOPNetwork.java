@@ -16,9 +16,8 @@ import net.neoforged.bus.api.IEventBus;
  * <ul>
  *   <li>{@code ShakeCameraPacket} → {@code ScreenShake}/{@code ScreenShakes} (fBm-driven, stackable).</li>
  *   <li>{@code StompDustFXPacket} → {@code ParticleFx}.</li>
- *   <li>{@code StoCSyncFlying} → unnecessary: it only existed because 1.20.1's {@code FlyingEntity}
- *       flipped a non-synced field in {@code switchNavigation()}. {@code AbstractFlyingEntity}
- *       keeps flight state in a synced {@code EntityDataAccessor}, so clients already agree.</li>
+ *   <li>No flight-sync packet: {@code AbstractFlyingEntity} keeps flight state in a synced
+ *       {@code EntityDataAccessor}, so clients already agree.</li>
  * </ul>
  */
 public final class SMOPNetwork {

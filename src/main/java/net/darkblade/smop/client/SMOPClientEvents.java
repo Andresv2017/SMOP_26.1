@@ -61,8 +61,7 @@ public final class SMOPClientEvents {
 
     /**
      * Binds {@code smop:niras_spear} as an item-model type, so the spear's item definition can name it
-     * and get the real mesh instead of a flat sprite. This is the 26.1 replacement for the BEWLR that
-     * 1.20.1 used — see {@link NirasSpearSpecialRenderer}.
+     * and get the real mesh instead of a flat sprite — see {@link NirasSpearSpecialRenderer}.
      */
     @SubscribeEvent
     static void onRegisterSpecialModelRenderers(RegisterSpecialModelRendererEvent event) {

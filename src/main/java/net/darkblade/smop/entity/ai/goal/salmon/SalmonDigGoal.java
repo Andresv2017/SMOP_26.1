@@ -33,9 +33,8 @@ import java.util.Map;
  *
  * <p>Picks a diggable block it can actually path to, swims there playing {@code sniff}, then plays
  * {@code dig} — and stops there. <b>The block is turned over by a frame event on the dig clip</b>
- * ({@code SalmonEntity#completeDig}), not by a counter in this goal. On 1.20.1 the goal ran its own
- * {@code excavationTicks} beside the animation and broke the block at tick 35 of a 54-tick clip;
- * the two were only in step because both numbers were written down twice.
+ * ({@code SalmonEntity#completeDig}), not by a counter in this goal — a counter running beside the
+ * clip only stays in step while two numbers are kept written down twice.
  */
 public class SalmonDigGoal extends Goal {
 
@@ -395,7 +394,7 @@ public class SalmonDigGoal extends Goal {
      * found thousands of candidate blocks and accepted none.
      *
      * <ul>
-     *   <li>Horizontal-only (the 1.20.1 rule) failed on a real river: on a flat bed a block's
+     *   <li>Horizontal-only failed on a real river: on a flat bed a block's
      *       horizontal neighbours are more bed, so only the rim of the channel qualified.</li>
      *   <li>Above-only failed on a dug-out tank: there the reachable faces are the <em>walls</em>,
      *       whose top face is capped by more wall or by the surface layer, so nothing qualified

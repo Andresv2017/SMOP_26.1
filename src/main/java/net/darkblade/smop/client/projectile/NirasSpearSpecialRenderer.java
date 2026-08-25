@@ -14,20 +14,17 @@ import java.util.function.Consumer;
  * Draws the spear's real model in place of its flat icon, everywhere except the GUI.
  *
  * <p><b>Why this exists at all.</b> An item's sprite is a flat quad; a spear held flat looks like a
- * sticker. 1.20.1 solved it with a BEWLR, which 26.1 removed. The replacement is data-driven: the
- * item definition picks this renderer by id for every display context it wants in three dimensions,
- * and the id is bound to the codec below through {@code RegisterSpecialModelRendererEvent}.
+ * sticker. The mechanism is data-driven: the item definition picks this renderer by id for every
+ * display context it wants in three dimensions, and the id is bound to the codec below through
+ * {@code RegisterSpecialModelRendererEvent}.
  *
- * <p><b>The split is inverted from the legacy's.</b> {@code NirasSpearItemBewlr} drew 3D only in the
- * four hand contexts and fell back to a sprite everywhere else — including dropped on the ground and
- * in item frames. Here only the GUI stays flat, which is the one place a sprite genuinely reads
- * better: an inventory slot is 16 pixels and a foreshortened model in it is mush.
+ * <p><b>Only the GUI stays flat</b>, which is the one place a sprite genuinely reads better: an
+ * inventory slot is 16 pixels and a foreshortened model in it is mush.
  *
  * <p><b>The negative scale is the flip.</b> The mesh is authored pointing the opposite way from item
  * space, so it has to be turned end for end. Vanilla's trident has exactly the same problem and
- * declares {@code new Transformation(null, null, new Vector3f(1, -1, -1), null)} for it; the legacy
- * BEWLR did the same thing as {@code Axis.XP.rotationDegrees(-180)} plus a nudge. Doing it in the
- * pose stack rather than in the model JSON keeps it next to the mesh it corrects.
+ * declares {@code new Transformation(null, null, new Vector3f(1, -1, -1), null)} for it. Doing it in
+ * the pose stack rather than in the model JSON keeps it next to the mesh it corrects.
  */
 public class NirasSpearSpecialRenderer implements NoDataSpecialModelRenderer {
 

@@ -81,25 +81,13 @@ import java.util.function.Supplier;
 /**
  * The Nirasmosaurus: a marine reptile that hunts in the water and hauls out onto the shore.
  *
- * <p><b>Port status — phases 1a, 1b and 1c of the port spec.</b> Geometry, both animation sets,
- * amphibious locomotion, the sleep cycle in both mediums, nesting, and now the two simple bites with
- * the hunting that gives them something to bite. The grab, the shake and the death roll — the moves
- * that justify the animal — are 1d; taming and riding are phase 2. The idle gesture was dropped from
- * 1b on purpose: {@code roar}, {@code goofy} and {@code waiting} are all still unspent, and which of
- * them reads as this animal's resting tic is a decision better made with it alive on screen.
- *
  * <p><b>It extends {@code SMOPWaterAnimal}, the salmon's base, and only overrides what a reptile
- * does differently from a fish.</b> The port spec originally sent it down the Hell Hippo's route —
- * {@code GenderedSMOPAnimal} plus a hand-built water kit — on the grounds that this base "carries the
- * beached-fish flop". It does not: the flop is an opt-out hook whose own javadoc says "anything that
- * can walk turns this off", and it sits next to another that says "amphibians turn this off". The
- * base was written with a case like this in mind.
- *
- * <p>Rebuilding it by hand cost more than the two overrides it saves. It also silently dropped three
- * things this class had no business omitting: the water pathfinding malus (without which the
- * navigator treats water as a hazard and the animal swims nowhere), {@code isPushedByFluid}, and the
- * SYNCED fast-swim flag — play conditions run on both sides and {@code getDeltaMovement()} is not
- * synced for mobs, so reading speed directly desynchronises the clip.
+ * does differently from a fish.</b> The beached-fish flop is an opt-out hook, not an obstacle. Three
+ * things the base brings are easy to omit when rebuilding a water kit by hand and all three break the
+ * animal: the water pathfinding malus (without which the navigator treats water as a hazard and it
+ * swims nowhere), {@code isPushedByFluid}, and the SYNCED fast-swim flag — play conditions run on both
+ * sides and {@code getDeltaMovement()} is not synced for mobs, so reading speed directly
+ * desynchronises the clip.
  *
  * <p><b>The one genuine difference is the navigation, and it needs TWO.</b> Swimming the water column
  * requires a {@code WaterBoundPathNavigation}; walking requires a ground one; there is no single
@@ -110,7 +98,7 @@ import java.util.function.Supplier;
  */
 public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, CustomEggBorn {
 
-    /** Bait and breeding food. Cooked fish, as in 1.20.1's lure config. */
+    /** Bait and breeding food. */
     private static final Ingredient FOOD_ITEMS = Ingredient.of(Items.COOKED_COD, Items.COOKED_SALMON);
 
     /** Above this speed (blocks/tick) the sprint clip takes over from the cruise clip. */
@@ -133,9 +121,7 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
     /**
      * What it hunts.
      *
-     * <p><b>Nothing here is ported.</b> The 1.20.1 selector matches horses and only horses, which is
-     * a leftover from testing against whatever was standing in the world, not a design — so the list
-     * is chosen rather than carried over. These five share the beach and the warm ocean with it.
+     * <p>These five share the beach and the warm ocean with it.
      *
      * <p><b>The dolphin is deliberately absent.</b> Not out of mercy: it is the one thing down there
      * that fights back, and the first read of this animal should not be "it kills dolphins". The
@@ -181,10 +167,6 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
      * {@code w_bite} — adult and calf, land and water — are authored to the same beat:
      * {@code gLowerjaw} opens to 32.5° at 0.1 s, holds to 0.4 and shuts at 0.45. Ticks 8 and 9 are
      * that shut in every one of them.
-     *
-     * <p>1.20.1 declared {@code damageFrames = {9}} and it turns out to be right. The difference is
-     * that this was read off the keyframes rather than inherited, which is what the port spec asks
-     * for every number that comes from there.
      */
     private static final int BITE_WINDOW_START = 8;
     private static final int BITE_WINDOW_END = 9;
@@ -251,11 +233,9 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
      * {@code /smop debug bite watch} timed that chase closing 14 blocks in five and a half seconds,
      * roughly 2.5 blocks a second, against a player who swims at 2.2.
      *
-     * <p><b>And it is NOT shared with the land chase, which is the mistake this replaces.</b> The
-     * original note here argued that 1.20.1's split — 1.2 ashore, 1.6 afloat — should not be ported,
-     * because since 1b the per-medium conversion lives in the land navigator and every goal speaks
-     * one unit. The first half of that is true and still stands; the conclusion does not follow. The
-     * conversion factors differ by twenty-five to one, so the same modifier is the same MULTIPLE of a
+     * <p><b>And it is NOT shared with the land chase.</b> The per-medium conversion lives in the land
+     * navigator and every goal speaks one unit, but that does not make one modifier right for both:
+     * the conversion factors differ by twenty-five to one, so the same modifier is the same MULTIPLE of a
      * stroll in both media — and three and a half times a stroll reads as a lunge in water and as a
      * sprint on a beach. What a chase is worth genuinely differs by medium; that is design, not the
      * unit riddle 1b removed. @see #LAND_CHASE_SPEED
@@ -397,23 +377,19 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
     }
 
     /**
-     * {@code createAnimalAttributes}, not {@code createLivingAttributes} as 1.20.1 had it: 26.1's
-     * {@code TemptGoal} reads {@code Attributes.TEMPT_RANGE}, which only the animal supplier defines.
-     * Getting this wrong crashes on spawn rather than at load, and it already cost us an evening on
-     * the Hell Hippo.
+     * {@code createAnimalAttributes} and not {@code createLivingAttributes}: {@code TemptGoal} reads
+     * {@code Attributes.TEMPT_RANGE}, which only the animal supplier defines. Getting this wrong
+     * crashes on spawn rather than at load.
      */
     public static AttributeSupplier.Builder createAttributes() {
         return Animal.createAnimalAttributes()
-                // 30, not the 10 carried over from 1.20.1. That number was never thought about: it is
-                // what a cow has, and what the one-block Tangoftero has, on the largest animal in the
-                // mod — half the Hell Hippo's 20 on a body longer than the Hell Hippo's. An apex
-                // predator that a stone sword kills in four swings is not one.
+                // A cow has 10, and so does the one-block Tangoftero. An apex predator that a stone
+                // sword kills in four swings is not one.
                 .add(Attributes.MAX_HEALTH, 30.0D)
                 .add(Attributes.FOLLOW_RANGE, 28.0D)
-                // 1.0, not the 0.20 carried over from 1.20.1. That number belonged to an entity with
-                // its own travel and its own controls; here SmoothSwimmingMoveControl multiplies the
-                // attribute by its in-water modifier of 0.02, so 0.20 came out as an effective 0.004 —
-                // measured, not guessed: the animal was moving at 0.005 blocks/tick, which is a tenth
+                // SmoothSwimmingMoveControl multiplies this attribute by its in-water modifier of
+                // 0.02, so a value of 0.20 comes out as an effective 0.004 — measured, not guessed:
+                // the animal moved at 0.005 blocks/tick, which is a tenth
                 // of a block per second and reads as floating in place. The salmon swims on 0.6; this
                 // is a larger predator, so it gets more.
                 .add(Attributes.MOVEMENT_SPEED, 1.0D)
@@ -456,8 +432,7 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
 
         // The bite. The goal decides only WHEN to commit; the damage lives in each clip's HitWindow
         // (see registerAnimations) so it lands on the frames the jaws close, instead of on a counter
-        // running beside the animation — which is what 1.20.1 did, and why its hit and its visible
-        // bite drifted apart.
+        // running beside the animation, where the hit and the visible bite drift apart.
         //
         // Everything below priority 1 shifted down one to make room here. NOT a tie with the breed
         // goal: WrappedGoal#canBeReplacedBy only yields a flag on a strict `<`, so two goals at the
@@ -544,8 +519,7 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
             }
         });
         // No setAlertOthers(), unlike the hippo: that one alerts its family because it lives in one.
-        // This animal has no pod — the port spec dropped the 1.20.1 group system along with the
-        // hippo's.
+        // This animal has no pod.
         //
         // Explicit type arguments on both: the diamond cannot be inferred for an anonymous subclass.
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<Player>(this, Player.class, true) {
@@ -1366,9 +1340,8 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
     }
 
     /**
-     * In water, or hauled out on a shore it could plausibly have crawled onto. Straight from 1.20.1,
-     * which accepted sand, grass, gravel and stone — the shoreline blocks — rather than the usual
-     * "on any solid block" so it does not appear inland.
+     * In water, or hauled out on a shore it could plausibly have crawled onto — a block list rather
+     * than the usual "on any solid block", so it does not appear inland.
      *
      * <p>The shore half only became reachable once the placement type stopped being plain
      * {@code IN_WATER}: the placement runs first and rejected every dry position before this method
@@ -1377,11 +1350,9 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
      * knows "solid, with headroom", so without the block list below the animal would turn up on any
      * hillside the Y roll happened to land on.
      *
-     * <p>Sand and gravel only. The 1.20.1 list also carried grass and stone, and that was never a
-     * decision anyone tested — under the old {@code IN_WATER} placement this whole branch was
-     * unreachable. Made live as written, it read "any island or slope inside an ocean or beach biome",
-     * which is a very large amount of ground and was a real part of how the population ran away. These
-     * two are what a shoreline is actually made of.
+     * <p>Sand and gravel only. Adding grass and stone reads as "any island or slope inside an ocean or
+     * beach biome", which is a very large amount of ground and was a real part of how the population
+     * ran away. These two are what a shoreline is actually made of.
      */
     public static boolean checkNirasSpawnRules(EntityType<NirasmosaurusEntity> type, LevelAccessor level,
                                                EntitySpawnReason reason, BlockPos pos, RandomSource random) {

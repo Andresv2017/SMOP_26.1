@@ -886,9 +886,9 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         // Both rigs author eat at withLength(3.5F); verified rather than assumed.
         StandardAnimation eat = clip(ANIM_EAT, () -> HellHippoAnimations.eat, () -> HellHippoBabyAnimations.eat,
                 Loop.PLAY_ONCE, 1, 3.5F);
-        // The stare-down, in three pieces. It arrived from 1.20.1 as ONE 7.5-second clip and was
-        // registered that way at first, which looked wrong for a reason no amount of looping could
-        // fix: a 7.5-second clip covering a 15-second window has to restart, and the restart passes
+        // The stare-down, in three pieces, because it is authored as ONE 7.5-second clip and a single
+        // clip cannot cover the window: a 7.5-second clip over a 15-second standoff has to restart,
+        // and the restart passes
         // through the settle its own last second is made of — so the animal visibly relaxed out of
         // the pose and snapped back into it, twice per standoff.
         //
@@ -908,9 +908,8 @@ public class HellHippoEntity extends GenderedSMOPAnimal
                 Loop.PLAY_ONCE, 0, ATTACK_SECONDS);
 
         // The damage is here, not in the goal: the goal only decides WHEN to commit, and the window
-        // sweeps a box on the frames the jaws are actually closing. The 1.20.1 version instead ran a
-        // parallel 13-tick counter inside the goal and called doHurtTarget when it hit zero, which is
-        // why the hit and the visible bite drifted apart.
+        // sweeps a box on the frames the jaws are actually closing. A parallel counter inside the goal
+        // is how the hit and the visible bite drift apart.
         HitWindow.of(ATTACK_WINDOW_START, ATTACK_WINDOW_END)
                 // box3d and not box: box ignores the Y axis outright (AttackShape's interface note
                 // says so — "a ground mob's swing reaches whatever is in front of it, at any height"),

@@ -20,11 +20,9 @@ import org.jetbrains.annotations.Nullable;
  * {@link TangoArrowEntity}: against the undead it hits harder and scatters the ones around whatever
  * it hit, which is the Tangoftero's own roar delivered at range.
  *
- * <p><b>The dispenser case is handled here and was not in 1.20.1.</b> The legacy overrode {@code
- * createArrow} alone, which covers bows and crossbows but leaves {@code ProjectileItem#asProjectile}
- * — the dispenser path — on {@link ArrowItem}'s default. A dispenser loaded with tango arrows
- * therefore fired plain {@code minecraft:arrow} entities that dropped a tango arrow when collected.
- * Nobody would call that a bug they had noticed, but it is one, and it costs four lines to not port.
+ * <p><b>The dispenser path needs its own override.</b> {@code createArrow} covers bows and crossbows
+ * but leaves {@code ProjectileItem#asProjectile} on {@link ArrowItem}'s default, so without this a
+ * dispenser fires plain {@code minecraft:arrow} entities that drop a tango arrow when collected.
  */
 public class TangoArrowItem extends ArrowItem {
 

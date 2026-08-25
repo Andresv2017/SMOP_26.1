@@ -24,12 +24,9 @@ import org.jetbrains.annotations.Nullable;
  * the animal itself does when you feed it rotten flesh. See {@link #onHitEntity} for the mechanism
  * and {@link net.darkblade.smop.entity.UndeadScatter} for the part both share.
  *
- * <p><b>1.20.1 had none of this.</b> The legacy class overrode exactly one thing beyond the
- * constructors, {@code createArrow}, and used it to call {@code setBaseDamage(2.0)} — which
- * {@link AbstractArrow} already initialises to 2.0 (read from 26.1's own source, not assumed). That
- * call changed nothing, so the old tango arrow flew, pierced, enchanted and hurt exactly like
- * {@code minecraft:arrow}: a re-textured arrow with a crafting cost and no reason to exist. The
- * anti-undead behaviour is new, and deliberate.
+ * <p><b>The anti-undead behaviour is the whole reason this class exists.</b> Without it the arrow
+ * flies, pierces, enchants and hurts exactly like {@code minecraft:arrow} — {@link AbstractArrow}
+ * already initialises base damage to 2.0 — which would make it a re-texture with a crafting cost.
  *
  * <p>Note there is still no blanket damage override. The base stays at vanilla's 2.0 and the bonus is
  * applied only for the hit that earns it, so a tango arrow shot at a pig is worth exactly what a
@@ -150,9 +147,8 @@ public class TangoArrowEntity extends AbstractArrow {
     /**
      * What it becomes when picked up, and the fallback when a saved arrow has no stored item.
      *
-     * <p>1.20.1 returned a fresh stack here too, with a comment that it deliberately dropped any NBT.
-     * In 26.1 the stored stack is the norm — the constructors copy it — and this is only consulted
-     * when there is none, so returning a plain arrow is both the old behaviour and the right one.
+     * <p>The stored stack is the norm — the constructors copy it — and this is only consulted when
+     * there is none, so a plain arrow is the right fallback.
      */
     @Override
     protected @NotNull ItemStack getDefaultPickupItem() {
