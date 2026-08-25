@@ -28,11 +28,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
 
-/**
- * A clutch of 1–4 small eggs sharing one block, each hatching its own baby — the Tangoftero and
- * Kriftognathus nests. Placing more of the same egg item on the block adds to the clutch, exactly
- * like vanilla turtle eggs.
- */
 public class SmallEggsBlock extends AbstractEggBlock {
 
     public static final IntegerProperty EGGS = BlockStateProperties.EGGS;
@@ -57,14 +52,6 @@ public class SmallEggsBlock extends AbstractEggBlock {
         return state.getValue(EGGS);
     }
 
-    /**
-     * Relative chance of each clutch size, indexed from one egg up to {@link #MAX_EGGS}: small
-     * clutches are the norm, a full four is a rare find. Weights rather than a flat
-     * {@code nextInt(4)} because an even spread would make a four-egg nest as ordinary as a single.
-     *
-     * <p>Change the numbers freely — they are relative, {@link #CLUTCH_WEIGHT_TOTAL} is summed from
-     * them, so they do not have to add up to anything in particular.
-     */
     private static final int[] CLUTCH_WEIGHTS = {35, 35, 20, 10};
     private static final int CLUTCH_WEIGHT_TOTAL = java.util.Arrays.stream(CLUTCH_WEIGHTS).sum();
 
@@ -73,7 +60,6 @@ public class SmallEggsBlock extends AbstractEggBlock {
         return this.defaultBlockState().setValue(EGGS, rollClutchSize(random));
     }
 
-    /** Weighted pick over {@link #CLUTCH_WEIGHTS}, clamped to what the block can actually hold. */
     private static int rollClutchSize(RandomSource random) {
         int roll = random.nextInt(CLUTCH_WEIGHT_TOTAL);
         for (int i = 0; i < CLUTCH_WEIGHTS.length; i++) {
@@ -85,7 +71,6 @@ public class SmallEggsBlock extends AbstractEggBlock {
         return 1;
     }
 
-    /** Removes one egg from the clutch; the block only disappears when the last one goes. */
     @Override
     protected void breakOneEgg(@NotNull Level level, @NotNull BlockPos pos, @NotNull BlockState state) {
         this.playBreakSound(level, pos);

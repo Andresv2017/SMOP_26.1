@@ -33,22 +33,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
 
-/**
- * Underwater roe: a translucent clutch that can only sit in a water source over solid ground, and
- * releases a school of fry after a randomised delay. The Salmon's spawn.
- *
- * <p>Unlike the land eggs it has no visible incubation stages — it either exists or it has hatched —
- * so it does not extend {@link AbstractEggBlock}, which is built around the {@code HATCH} property.
- */
 public class RoeEggsBlock extends Block {
 
-    /**
-     * A film on the river bed, matching vanilla frogspawn exactly (1.5 px tall).
-     *
-     * <p>Without this the block kept {@code Block}'s default full-cube shape: the model was already
-     * the flat plane, but the selection outline was a whole cube floating around it, so pointing at
-     * a clutch highlighted a block-sized box in the water.
-     */
     private static final VoxelShape SHAPE = Block.box(0.0D, 0.0D, 0.0D, 16.0D, 1.5D, 16.0D);
 
     private final Supplier<? extends EntityType<? extends LivingEntity>> mobType;
@@ -80,7 +66,6 @@ public class RoeEggsBlock extends Block {
 
     // ───────────────────────────────────────────────────── PLACEMENT ─────
 
-    /** Only inside a full water source that has something solid underneath it. */
     @Override
     public @Nullable BlockState getStateForPlacement(@NotNull BlockPlaceContext context) {
         BlockGetter level = context.getLevel();
@@ -93,7 +78,6 @@ public class RoeEggsBlock extends Block {
         return context.getLevel().getFluidState(context.getClickedPos()).is(FluidTags.WATER);
     }
 
-    /** Reports itself as water so the block does not carve a dry pocket out of the sea. */
     @Override
     protected @NotNull FluidState getFluidState(@NotNull BlockState state) {
         return Fluids.WATER.getSource(false);
@@ -118,12 +102,10 @@ public class RoeEggsBlock extends Block {
         if (!this.canSurvive(state, level, pos)) {
             return Blocks.AIR.defaultBlockState();
         }
-        // Keep the surrounding water ticking so it re-flows around the block.
         ticks.scheduleTick(pos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
         return state;
     }
 
-    /** A falling block landing in the nest destroys it. */
     @Override
     protected void entityInside(@NotNull BlockState state, @NotNull Level level, @NotNull BlockPos pos,
                                 @NotNull Entity entity, @NotNull InsideBlockEffectApplier effectApplier,
@@ -172,21 +154,12 @@ public class RoeEggsBlock extends Block {
             if (fry == null) {
                 continue;
             }
-            // Scatter across the block so the school does not spawn inside itself.
-            //
-            // The Y is the clutch's own block, NOT half a block under it. The roe sits ON the river
-            // bed, so pos.getY() - 0.5 dropped every fry into the solid bed below: they spawned
-            // buried, took suffocation damage immediately, and a 10 HP baby was dead long before
-            // anyone saw it — which is why hatching appeared to produce nothing at all. The clutch
-            // block has just been destroyed and, because it reported itself as a water source, has
-            // refilled with water, so this position is open water.
             double x = pos.getX() + Mth.clamp(random.nextDouble(), 0.2D, 0.8D);
             double z = pos.getZ() + Mth.clamp(random.nextDouble(), 0.2D, 0.8D);
             fry.snapTo(x, pos.getY(), z, random.nextFloat() * 360.0F, 0.0F);
 
             if (fry instanceof Mob mob) {
                 mob.finalizeSpawn(level, level.getCurrentDifficultyAt(pos), EntitySpawnReason.BREEDING, null);
-                // Fry are a bred population, not ambient spawns — do not let them despawn.
                 mob.setPersistenceRequired();
             }
             if (fry instanceof AgeableMob ageable) {

@@ -24,31 +24,12 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Grietas cosméticas en el suelo bajo el pisotón. <b>No rompe nada</b>: pinta la textura de rotura de
- * vanilla y la retira sola.
- *
- * <p>Portado del {@code CrackFX} de 1.20.1, con dos cambios deliberados. Uno: el radio lo manda el
- * pisotón, y en el port ese radio es 8 y no el 5 del legacy, porque el anillo de partículas ya se
- * dibuja en el radio de daño real para que sea el aviso de dónde cae el golpe — una grieta más
- * estrecha contaría una mentira sobre dónde duele. Dos: el pisotón son TRES impactos, y cada uno
- * PROFUNDIZA las grietas que ya hay en vez de repintarlas, así que el suelo cede progresivamente
- * mientras dura, que es justo lo que se está mirando.
- */
+
 @EventBusSubscriber(modid = SMOP.MOD_ID, value = Dist.CLIENT)
 public final class GroundCrackFx {
 
-    /** Fuera de 1..9 el renderer ignora la petición; 9 es la última etapa antes de la rotura. */
     private static final int MAX_STAGE = 9;
 
-    /**
-     * Etapa en el borde del disco y bajo el pie. <b>La grieta se lee por la profundidad, no por el
-     * sitio:</b> hondo donde cayó el pie y superficial en el borde cuenta un impacto, mientras que una
-     * etapa al azar por bloque —lo que hacía la primera versión— sólo parece ruido.
-     *
-     * <p>Se deja el 9 sin usar a propósito: es a donde llega el centro cuando el segundo y el tercer
-     * impacto profundizan lo que ya había.
-     */
     private static final int RIM_STAGE = 4;
     private static final int FOOT_STAGE = 8;
 

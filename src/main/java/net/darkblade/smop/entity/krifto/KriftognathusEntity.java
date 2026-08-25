@@ -596,21 +596,10 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.playIfRegistered(ANIM_START_FLIGHT);
     }
 
-    /**
-     * The descent toward a landing deliberately plays <b>nothing</b>: the ordinary flight cycle is
-     * {@code start_flight} → {@code fly_idle}/{@code flight} → {@code landing}, and the hover simply
-     * keeps running until the landing flare takes over. {@code swoop} is not part of it — that clip is
-     * a committed power dive, reserved for {@link #playSwoopClip()}.
-     */
     @Override
     protected void onSeekGroundBegin() {
     }
 
-    /**
-     * The power dive, for {@code StealFromPlayerGoal} committing to its run at a player. This is the
-     * only thing that plays {@code swoop}; {@code playIfRegistered} is protected, hence this thin
-     * opening for the goal to reach it.
-     */
     public void playSwoopClip() {
         this.playIfRegistered(ANIM_SWOOP);
     }
@@ -622,18 +611,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── ANIMATIONS ─────
 
-    /**
-     * Exclusion is by <b>priority</b>, not by play condition: locomotion sits at 2–3 and every
-     * one-shot at 0–1, so {@code BlendLayer#current} renders the one-shot while the locomotion cycle
-     * keeps running underneath — which is what gives the frame an attack or a perch ends something
-     * to fall back to instead of collapsing to the bind pose. Same arrangement as the Tangoftero.
-     *
-     * <p>The chick has no flight clips at all, so the air family carries only an adult definition.
-     * The loops gate on {@code isFlying()} and the one-shots are fired by the flight lifecycle, and
-     * both of those are closed to a baby — {@code SMOPFlyingAnimal} refuses to set the flight flag on
-     * one and refuses to start a take-off for one. So no air clip can ever be baked against the chick
-     * model, which lacks the bones they animate.
-     */
     @Override
     public void registerAnimations() {
         StandardAnimation idle = clip("idle", () -> KriftoAnimations.lidle, () -> KriftoBabyAnimations.l_idle,
@@ -838,17 +815,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.animator().registerDeath(death);
     }
 
-    /** True when nothing more important owns the pose. */
     private boolean canPlayLocomotion() {
         return !this.isDeadOrDying();
     }
 
 
-    /**
-     * Builds a clip whose definition is chosen by age lazily. The suppliers are not a style choice:
-     * {@code AnimationDefinition} is {@code @OnlyIn(Dist.CLIENT)} and {@code registerAnimations()}
-     * runs on both sides, so reading the field here would load the class and kill a dedicated server.
-     */
     private StandardAnimation clip(String name, Supplier<Object> adult, Supplier<Object> baby,
                                    Loop loop, int priority, float seconds) {
         return new StandardAnimation(name,
@@ -859,22 +830,12 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return new StandardAnimation(name, new AnimSource(adult), loop, 0, priority, seconds);
     }
 
-    /**
-     * Builds one of the sleep-cycle transitions, stretched by {@link #TRANSITION_SLOWDOWN}.
-     *
-     * <p><b>Two numbers, one decision — which is why this exists rather than setting them at the call
-     * sites.</b> {@code playbackSpeed} is a purely client-side visual rate ({@code BlendState} scales
-     * its own clock by it) and has no effect whatsoever on {@code durationTicks}, which is what stops
-     * the animation and what {@code SleepGoal} times the phase by. Slowing only the first truncates
-     * the motion: the clip is cut at its authored length having played a fraction of the way through.
-     * So the authored length goes in once and both come out of it.
-     */
+
     private StandardAnimation slowTransition(String name, Supplier<Object> adult, Supplier<Object> baby,
                                              float authoredSeconds) {
         return slowed(this.clip(name, adult, baby, Loop.PLAY_ONCE, 1, authoredSeconds * TRANSITION_SLOWDOWN));
     }
 
-    /** @see #slowTransition */
     private StandardAnimation slowAdultTransition(String name, Supplier<Object> adult, float authoredSeconds) {
         return slowed(this.adultClip(name, adult, Loop.PLAY_ONCE, 1, authoredSeconds * TRANSITION_SLOWDOWN));
     }
@@ -901,35 +862,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
-    /** Ticks between offering scans. @see #tickFeedOffering() */
     private static final int OFFERING_SCAN_INTERVAL = 10;
 
-    /** Server-only cache of {@link TameFeedGoal#findOffering}. @see #tickFeedOffering() */
     @Nullable
     private ItemEntity feedOffering;
 
-    /**
-     * Keeps the taming ritual reachable from the air, and keeps it from being abandoned halfway.
-     *
-     * <p>{@link TameFeedGoal} stands down completely while airborne — it has to, or it holds MOVE
-     * over {@code FlightWanderGoal} and starves the one goal that actually drives a descent. That
-     * leaves nobody inside the goal system watching for an offering while the mob is flying, so the
-     * entity watches instead and works the two lifecycle levers from out here:
-     *
-     * <ul>
-     *   <li>Airborne: {@link #requestLanding()}, so the ordinary stoop-and-land runs now rather than
-     *       whenever {@link #computeMaxFlightTicks()} happens to expire — up to 30 s of the mob
-     *       circling over a meal it has no way to notice.</li>
-     *   <li>Grounded: {@link #hasFeedOfferingNearby()} pins the take-off (see
-     *       {@code KriftoTakeoffGoal#canUse}). The ritual is several bites with a cooldown between
-     *       them, easily longer than a ground-rest timer that has usually been draining since
-     *       touchdown — without this the mob launches between bites and the whole ritual restarts a
-     *       flight cycle later, over and over.</li>
-     * </ul>
-     *
-     * <p>Scanned on an interval, not every tick: it is a radius-16 entity query, and the answer does
-     * not meaningfully change inside ten ticks.
-     */
     private void tickFeedOffering() {
         if (this.isTame()) {
             this.feedOffering = null;
@@ -943,17 +880,10 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
-    /** Whether an untamed krifto has an offering waiting for it. @see #tickFeedOffering() */
     public boolean hasFeedOfferingNearby() {
         return this.feedOffering != null;
     }
 
-    /**
-     * Comes down on the offering rather than wherever the heading pointed. The unaimed stoop runs
-     * forward the whole way down, so a krifto that spotted a scrap of meat from cruising altitude
-     * touched down a long way from it — often outside the radius {@link TameFeedGoal} searches, which
-     * meant it landed and then forgot what it came down for.
-     */
     @Override
     @Nullable
     protected Vec3 getDescentTarget() {
@@ -961,14 +891,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return offering != null && offering.isAlive() ? offering.position() : null;
     }
 
-    /**
-     * The taming flourish belongs on the ground. Its clip already pins the mob through
-     * {@code isMovementLocked()} while it plays, but that lock lifts on the same tick the clip ends
-     * and the ground-rest timer has invariably drained to zero during the feeding ritual that led
-     * here — so {@code KriftoTakeoffGoal} fires on the very next tick and the flourish's tail, plus
-     * the first flight after the new owner, happen in mid-air. Holding the ground a beat past the
-     * clip lets it finish where it was earned, and the mob takes to the air after that.
-     */
     @Override
     protected void onActionStart(String name) {
         super.onActionStart(name);
@@ -977,32 +899,11 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
-    /**
-     * The call is brief and {@link IdleAnimationGoal} only ever starts it with the mob already
-     * stopped. Locking movement for its 1.25 s would make a krifto ignore a threat that shows up
-     * mid-call just because it happened to be mid-squawk.
-     */
     @Override
     protected boolean actionLocksMovement(String name) {
         return !ANIM_SQUAWK.equals(name);
     }
 
-    /**
-     * Keeps the body pointed at the target for as long as it is in melee range.
-     *
-     * <p>{@code AnimatableMeleeAttackGoal} stops the navigation the instant the target is within
-     * its reach — exactly the ticks the bite's {@code HitWindow} sweeps on — and neither MoveControl
-     * (ground {@code MoveControl} or flying {@code SmoothFlyingMoveControl}) turns the body once
-     * navigation has stopped. Without this the yaw freezes wherever it last was, and the bite —
-     * a body-yaw-facing frontal box, no explicit {@code HitWindow#facing(...)} override — swings at
-     * whatever direction that happened to be instead of at the target. That is the whiff the debug
-     * hitbox particles were showing on every attack, airborne or grounded, moving target or not:
-     * the box itself was landing exactly where the frozen yaw pointed it, just not on anyone.
-     *
-     * <p>Same bug, same fix as the Tangoftero's own {@code faceCombatTarget()} — this one reuses
-     * {@code SMOPFlyingAnimal#faceHeading} instead of a {@code DirectionalMoveControl} swap, since
-     * that utility already works from either move state and this mob needs both.
-     */
     private void faceCombatTarget() {
         LivingEntity target = this.getTarget();
         if (target == null || !target.isAlive() || this.isMovementLocked() || this.isDeadOrDying()) {
@@ -1019,8 +920,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
     public @NotNull InteractionResult mobInteract(@NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
 
-        // Shift-click by the owner is the sit/follow/wander cycle in SMOPAnimal — let it through
-        // before the perch branch below, or the orders could never be given.
         if (this.isTame() && this.isOwnedBy(player) && player.isShiftKeyDown()) {
             return super.mobInteract(player, hand);
         }
@@ -1033,12 +932,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
             return InteractionResult.SUCCESS;
         }
 
-        // Grab on: perch it over the owner's head as a parachute (see #getPerchTargetId). Owner-only,
-        // and adult-only since the chick model has no rig for the grip pose.
-        //
-        // Mounting only — this deliberately does NOT toggle. Sneaking is the one way back off (see
-        // #tickPerch), so that letting go is a single, always-available gesture rather than something
-        // that also depends on managing to click a hitbox riding your own head.
         if (this.isTame() && this.isOwnedBy(player) && !this.isBaby() && !this.isPassenger()
                 && !this.isPerched()) {
             if (!this.level().isClientSide()) {
@@ -1057,12 +950,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── GROUND TAMING ─────
 
-    /**
-     * The ritual's bookkeeping. Used to be two fields and two methods right here; it moved out to
-     * {@link TameProgress} because the Nirasmosaurus and the Hell Hippo count the same way even
-     * though they get fed completely differently. Only {@link TameFeedGoal}, which is server-only,
-     * ever touches it.
-     */
     private final TameProgress tameProgress = new TameProgress(this, FEED_GOAL_MIN, FEED_GOAL_MAX);
 
     public @NotNull TameProgress tameProgress() {
@@ -1071,7 +958,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── THEFT ─────
 
-    /** {@link ItemStack#EMPTY} unless a heist is in progress. @see StealFromPlayerGoal */
     public @NotNull ItemStack getStolenItem() {
         return this.entityData.get(STOLEN_ITEM);
     }
@@ -1080,7 +966,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.entityData.set(STOLEN_ITEM, stack);
     }
 
-    /** A heist caught short by death still pays out — the loot is recoverable, not just lost. */
     @Override
     protected void dropCustomDeathLoot(@NotNull ServerLevel level, @NotNull DamageSource source, boolean recentlyHit) {
         super.dropCustomDeathLoot(level, source, recentlyHit);
@@ -1101,7 +986,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.entityData.set(SPAWN_BIOME, path);
     }
 
-    /** Records the biome under the mob, which is what its adult coat is picked from. */
     private void assignBiomeCoat(ServerLevelAccessor level) {
         Identifier key = level.registryAccess()
                 .lookupOrThrow(Registries.BIOME)
@@ -1109,7 +993,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.setSpawnBiomePath(key != null ? key.getPath() : "default");
     }
 
-    /** Hatched rather than spawned: the coat and sex are rolled here instead of in finalizeSpawn. */
     @Override
     public void onEggBorn(@NotNull ServerLevel level, @NotNull BlockPos pos) {
         this.assignBiomeCoat(level);
@@ -1145,13 +1028,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── SOUNDS ─────
 
-    /**
-     * Null on purpose: this mob has no vanilla ambient noise. Its call is a gesture, driven by
-     * {@link IdleAnimationGoal} and carrying its own sound on the clip (see
-     * {@link #registerAnimations()}). Returning the squawk here would hand a second copy to
-     * {@code Mob#baseTick}, which rolls for it independently on each side — the desync this was all
-     * built to end.
-     */
     @Override
     protected @Nullable SoundEvent getAmbientSound() {
         return null;
@@ -1188,13 +1064,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.perchHostId = input.read("PerchHost", UUIDUtil.CODEC).orElse(null);
         this.perchRestoreTicks = this.perchHostId != null ? PERCH_RESTORE_WINDOW_TICKS : 0;
 
-        // Drop the perch's no-gravity unconditionally, and let tickPerchRestore put it back only if it
-        // actually finds the host. Perching is the sole reason a GROUNDED Krifto floats, and unlike the
-        // synced perch state, noGravity IS persisted by vanilla — so on its own it comes back set with
-        // nothing left to justify it, and the bird hangs in the air playing the ground idle. That is
-        // the same failure SMOPFlyingAnimal's own flight restore exists to prevent, reached by the one
-        // path it does not cover. The isFlying() guard is what keeps this from undoing that restore,
-        // which runs in the super call above and sets no-gravity for a legitimately airborne mob.
         if (!this.isFlying()) {
             this.setNoGravity(false);
         }

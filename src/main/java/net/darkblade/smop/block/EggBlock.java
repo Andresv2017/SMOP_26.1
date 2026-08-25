@@ -29,24 +29,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
 
-/**
- * A single large egg that hatches one baby — the Nirasmosaurus nest. Sized in pixels at
- * construction so one class covers eggs of any dimensions.
- *
- * <p><b>Waterloggable</b>, which for this egg is not a nicety: the Nirasmosaurus lays on the sea bed,
- * and a block that displaced the water source it was laid in would leave a one-block air pocket at
- * the bottom of the ocean. {@code RoeEggsBlock} avoids the same hole by declaring itself water
- * unconditionally, but that only works for a block that can exist nowhere else. This one is placeable
- * on dry land too, so it carries the state instead.
- */
 public class EggBlock extends AbstractEggBlock implements SimpleWaterloggedBlock {
 
     private final VoxelShape shape;
 
-    /**
-     * @param widthPx  footprint in pixels, centred on the block
-     * @param heightPx height in pixels
-     */
     public EggBlock(Supplier<? extends EntityType<? extends AgeableMob>> mobType, int incubationTimeTicks,
                     int widthPx, int heightPx, BlockBehaviour.Properties properties) {
         super(mobType, incubationTimeTicks, properties);
@@ -64,7 +50,6 @@ public class EggBlock extends AbstractEggBlock implements SimpleWaterloggedBlock
                 : super.getFluidState(state);
     }
 
-    /** Placed wet in water and dry out of it, like any waterloggable block. */
     @Override
     public @Nullable BlockState getStateForPlacement(@NotNull BlockPlaceContext context) {
         FluidState fluid = context.getLevel().getFluidState(context.getClickedPos());
@@ -99,8 +84,6 @@ public class EggBlock extends AbstractEggBlock implements SimpleWaterloggedBlock
                                               @NotNull ScheduledTickAccess ticks, @NotNull BlockPos pos,
                                               @NotNull Direction directionToNeighbour, @NotNull BlockPos neighbourPos,
                                               @NotNull BlockState neighbourState, @NotNull RandomSource random) {
-        // Keep the water around a submerged nest flowing, or the sea would stop updating through the
-        // egg's cell the moment a neighbour changed.
         if (state.getValue(BlockStateProperties.WATERLOGGED)) {
             ticks.scheduleTick(pos, Fluids.WATER, Fluids.WATER.getTickDelay(level));
         }
