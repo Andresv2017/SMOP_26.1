@@ -15,7 +15,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.Unit;
 
 /**
- * The spear mesh, ported cube for cube from 1.20.1.
+ * The spear mesh.
  *
  * <p>Geometry is authored art and travels unchanged. What changed around it is the base class:
  * 26.1's {@code Model} is generic over the state it is handed, and a projectile has none, so it is

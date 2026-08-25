@@ -59,55 +59,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * The Grand Tyrant: a 300-health, six-block boss.
- *
- * <p>Built on {@link CortexMonster}, which owns the FSM wiring: it builds the {@link Cortex}, installs
- * it behind a {@code FloatGoal}, syncs the live state and {@link #isMoving()} to the client, and feeds
- * hurt, death and target changes into the machine.
- *
- * <p><b>It deliberately has no look goals</b>, unlike the 1.20.1 build. Standing still, the body
- * rotation control follows the HEAD, and {@code LookAtPlayerGoal} never stops moving it — which is
- * what made the old one spin on the spot. Adding either one back brings that straight back.
- */
 public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animatable<GTEntity>, ISleepingEntity {
 
-    /**
-     * A 90-degree turn takes 36 ticks at this rate, which is the time {@code GTSpineTurn}'s wave needs
-     * to travel the whole spine. Faster and the turn is over before the tail hears about it.
-     *
-     * <p><b>Not a solo knob.</b> The gap that feeds the cascade is {@code this / BODY_LAG_MOVING}, so
-     * lowering only this number SHRINKS the cascade. The two move together.
-     */
     private static final float TURN_SPEED = 2.5F;
-    /**
-     * Still nearly triple the stroll — it has to be able to face you — but not so fast that the chase
-     * snaps around and throws away the weight the stroll just earned. Being the larger of the two, this
-     * is the one {@code GTBodyRotation}'s lag ceiling exists to contain.
-     */
     private static final float COMBAT_TURN_SPEED = 7.0F;
-    /**
-     * Generous on purpose: its attacks reach 6 to 9 blocks and the body has to keep orienting inside
-     * that radius instead of freezing the moment it arrives.
-     */
     private static final double FACE_LOCK_RADIUS = 10.0D;
 
-    /**
-     * A quarter of the library default. Standing, the body all but ignores the head and lets the neck
-     * do the work — which is what a neck this size is for.
-     */
     private static final float BODY_LAG_STILL = 0.02F;
-    /** Ten, not thirty: turning the body 30 degrees in a tick contradicts a heading that turns 5. */
     private static final float BODY_MAX_TURN = 10.0F;
-    /**
-     * How much of the gap to the heading the body closes per tick, a quarter of the library's 0.36.
-     *
-     * <p>That lag IS the signal {@code GTSpineTurn} propagates: with no gap there is nothing to
-     * cascade and the animal turns as one piece however well the spring chain is tuned. At
-     * {@code TURN_SPEED}, 0.36 would settle around 7 degrees — invisible — and 0.09 puts it near 28.
-     *
-     * <p><b>This is the knob to reach for if the turn feels flat or overdone</b>: lower is heavier.
-     */
     private static final float BODY_LAG_MOVING = 0.09F;
 
     private final MobAnimator<GTEntity> animator;
@@ -147,26 +106,15 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         return GTState.WANDER;
     }
 
-    /**
-     * How far a stroll may take it. Two and a half times the library default, because on a body 3.2
-     * wide the default reads as shuffling in place rather than going somewhere.
-     */
     private static final int WANDER_RANGE_H = 25;
     private static final int WANDER_RANGE_V = 10;
 
-    /** Twice the wander speed: without it the chase moves exactly as fast as the stroll. */
     private static final double CHASE_SPEED = 2.0D;
 
-    /** Matches FOLLOW_RANGE on purpose — it should not lose interest inside its own sight range. */
     private static final double TARGET_RANGE = 40.0D;
-    /** Ticks a wound keeps the attacker marked. */
     private static final int GRUDGE_TICKS = 400;
 
-    /**
-     * <b>Players only</b>, and only those who can be hurt — hand-rolled targeting has to exclude
-     * creative and spectator out loud, where vanilla's would have done it for free. The same test
-     * gates waking from sleep, and the two have to agree or it ignores you asleep and hunts you awake.
-     */
+
     @Override
     protected @NotNull Cortex<GTEntity, GTState> buildCortex() {
         return Cortex.<GTEntity, GTState>builder(GTState.WANDER)
@@ -200,18 +148,12 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                 .build();
     }
 
-    /**
-     * One footfall: dust under the foot that lands, and a short jolt for anyone close.
-     *
-     * <p>The dust always fires and the shake only nearby, and the asymmetry is deliberate — dust is
-     * information at a distance and makes nobody ill, whereas a shake twice a second does.
-     */
+
     private void onFootfall(boolean leftFoot, float amplitude) {
         if (!(this.level() instanceof ServerLevel serverLevel)) {
             return;
         }
         double yaw = Math.toRadians(this.yBodyRot);
-        // (cos, sin) of the yaw points to the animal's RIGHT, so the left foot goes negative.
         double side = leftFoot ? -FOOTFALL_LATERAL_OFFSET : FOOTFALL_LATERAL_OFFSET;
         Vec3 foot = new Vec3(
                 this.getX() + Math.cos(yaw) * side,
@@ -242,22 +184,15 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
             return;
         }
 
-        // Whatever it is standing on, so stomping sand throws sand.
         ParticleOptions debris = new BlockParticleOption(ParticleTypes.BLOCK, this.getBlockStateOn());
         Vec3 feet = new Vec3(this.getX(), this.getY(), this.getZ());
 
-        // The ring is drawn AT the damage radius, so it reads as the tell for where the hit lands.
-        // The height band that makes the stomp jumpable is invisible, so this is the only cue.
         ParticleFx.ring(serverLevel, debris, feet, STOMP_RADIUS);
         ParticleFx.burst(serverLevel, debris, feet, 40, 1.5D, 0.25D);
 
-        // Cracks go to everyone in the level rather than by distance: the effect is client-side and
-        // self-limiting, since a distant player has neither the chunk nor the stomp in view.
         SMOPNetwork.INSTANCE.sendToPlayersInLevel(serverLevel,
                 new StompCrackFxClientPacket(this.blockPosition(), (int) STOMP_RADIUS));
 
-        // Per player, with the falloff done here: the library's around(level) has no radius of its own
-        // and would rattle someone five thousand blocks away.
         for (ServerPlayer player : serverLevel.players()) {
             double distance = player.position().distanceTo(feet);
             if (distance > STOMP_SHAKE_RADIUS) {
@@ -276,38 +211,18 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
 
     // ------------------------------------------------------------------- ROAR -----
 
-    /** 5.2 s of clip, measured off it rather than estimated. */
     private static final int ROAR_TICKS = 104;
 
-    /**
-     * One roar per thirty seconds, whoever it is at. The new-target check alone is not enough:
-     * targeting drops and re-acquires readily, so a player stepping in and out of range had it
-     * bellowing on every re-acquisition.
-     */
     private static final int ROAR_COOLDOWN_TICKS = 600;
 
-    /** Who it last roared at, so a target it is already chasing does not get roared at every tick. */
     @Nullable
     private LivingEntity lastRoaredAt;
 
-    /** Game time the next roar is allowed. Server-side; the rule only runs there. */
     private long nextRoarTime;
 
-    /**
-     * Roars once when it acquires a new target.
-     *
-     * <p>A {@link GlobalRule} returns the id of the state to jump to, or {@code null} to stay out of
-     * the way. Global rules are evaluated <b>before</b> the active behaviour, so the
-     * {@code currentStateId} guard is not redundant: without it the rule would re-enter the roar on
-     * its own first tick and the animal would bellow forever.
-     *
-     * <p>The sound is played here rather than from the behaviour because this is the one place that
-     * knows the roar is <em>starting</em> — {@code TimedAnimationBehavior} has no enter hook.
-     */
     private @Nullable Integer roarAtNewTarget(GTEntity gt, BehaviorContext context, int currentStateId) {
         LivingEntity target = gt.getTarget();
         if (target == null || !target.isAlive()) {
-            // Lost it: whoever comes next earns a fresh roar.
             gt.lastRoaredAt = null;
             return null;
         }
@@ -315,8 +230,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
             return null;
         }
         if (gt.level().getGameTime() < gt.nextRoarTime) {
-            // Still hoarse. Note the target anyway, so it does not queue up a roar for the moment the
-            // cooldown expires on someone it has been chasing all along.
             gt.lastRoaredAt = target;
             return null;
         }
@@ -333,38 +246,19 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
     private static final EntityDataAccessor<Integer> SLEEP_PHASE =
             SynchedEntityData.defineId(GTEntity.class, EntityDataSerializers.INT);
 
-    /**
-     * Phase lengths, each read off the clip that phase plays. A phase longer than its clip leaves the
-     * animal holding the last frame for the difference; a shorter one cuts the clip mid-motion.
-     *
-     * <p>{@code SMOPAnimal} derives these from the animator layers; this entity has a different base
-     * and cannot, so they are measured and written down. <b>A re-export means re-measuring.</b>
-     *
-     * <p>{@link #SLEEPING_TICKS} is the exception and is <b>not</b> a phase length: sleeping lasts
-     * until dawn or a threat ends it. It is the length of the {@code sleep} loop, and
-     * {@code SleepGoal} reads it to start the wake on the loop's seam instead of wherever the cycle
-     * happened to be — see {@code SleepGoal#atSleepLoopSeam()}.
-     */
+
     private static final int SITTING_DOWN_TICKS = 38;
     private static final int PREPARING_SLEEP_TICKS = 60;
     private static final int SLEEPING_TICKS = 88;
     private static final int AWAKENING_TICKS = 80;
     private static final int STANDING_UP_TICKS = 80;
 
-    /**
-     * How long it stays sat, in WHOLE loops of the {@code sit} clip.
-     *
-     * <p><b>Whole loops, and that is load-bearing.</b> The last frame of {@code sit} matches the first
-     * frame of {@code sleep_preparing} on all 41 shared channels — a seam authored to be seamless,
-     * which ending the phase anywhere else throws away, and that showed up in game as a jerk.
-     */
     private static final int SIT_CLIP_TICKS = 88;
     private static final int SIT_MIN_LOOPS = 1;
     private static final int SIT_MAX_LOOPS = 2;
 
     private SleepUrge sleepUrge;
 
-    /** Lazily built: {@code registerGoals} runs from the constructor, before field initialisers. */
     private SleepUrge sleepUrge() {
         if (this.sleepUrge == null) {
             this.sleepUrge = new SleepUrge(this);
@@ -378,10 +272,7 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         builder.define(SLEEP_PHASE, SleepPhase.NONE.ordinal());
     }
 
-    /**
-     * No entity TYPE alarms it — it is at the top of the food chain. What wakes it is a player nearby,
-     * which {@code SleepGoal} handles for every mob, and damage, which goes through {@link #hurtServer}.
-     */
+
     @Override
     public @NotNull Set<EntityType<?>> getInterruptingEntityTypes() {
         return Set.of();
@@ -397,7 +288,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         this.entityData.set(SLEEP_PHASE, phase.ordinal());
     }
 
-    /** Overrides {@code LivingEntity#isSleeping()}, which vanilla defines off a bed it has not got. */
     @Override
     public boolean isSleeping() {
         return this.sleepPhase() == SleepPhase.SLEEPING;
@@ -422,12 +312,7 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         };
     }
 
-    /**
-     * Starts each phase's clip as the phase begins.
-     *
-     * <p>The animator's auto-start loop only ever starts REPEATING clips, and every phase but the sleep
-     * loop is a one-shot, so without this hook the transitions simply would not play.
-     */
+
     @Override
     public void onSleepPhaseBegin(@NotNull SleepPhase phase) {
         String clip = phase.clipName();
@@ -436,14 +321,7 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         }
     }
 
-    /**
-     * {@code SleepGoal} at priority 0, not the 1 the other SMOP mobs use.
-     *
-     * <p>{@code CortexMonster} adds its {@code CortexGoal} at priority 1 and calls this afterwards, so
-     * a sleep goal at the same priority would queue behind it and never claim MOVE or LOOK. At 0 it
-     * preempts the whole FSM — a sleeping animal does not fight — while still sitting behind the
-     * base's {@code FloatGoal}, so one that ends up in water floats rather than drowning.
-     */
+
     @Override
     protected void registerExtraGoals() {
         this.goalSelector.addGoal(0, new SleepGoal<>(this, this.sleepUrge()));
@@ -457,7 +335,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         }
     }
 
-    /** Being hit wakes it. */
     @Override
     public boolean hurtServer(@NotNull ServerLevel level, @NotNull DamageSource source, float amount) {
         boolean hurt = super.hurtServer(level, source, amount);
@@ -467,15 +344,7 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         return hurt;
     }
 
-    // --------------------------------------------------------------- BOSS BAR -----
 
-    /**
-     * The bar is what marks this as a boss rather than large fauna.
-     *
-     * <p><b>Vanilla owns the tracking, not a list of our own.</b> {@code startSeenByPlayer} and
-     * {@code stopSeenByPlayer} fire as players enter and leave tracking range; keeping a set by hand
-     * would reimplement that worse and leave bars stuck on screen when a player disconnects.
-     */
     private final ServerBossEvent bossBar = new ServerBossEvent(UUID.randomUUID(), this.getDisplayName(),
             BossEvent.BossBarColor.RED, BossEvent.BossBarOverlay.PROGRESS);
 
@@ -506,121 +375,51 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         return this.animator;
     }
 
-    /** 0.8333 s of clip, which is 16.7 ticks. Rounded up so the behaviour never ends mid-frame. */
     private static final int BITE_TICKS = 17;
 
-    /**
-     * The frames the jaws are actually shut. Three ticks and not one: a one-tick window has to catch a
-     * moving target on exactly the right server tick, and {@code HitWindow} interpolates the sweep
-     * across the range anyway.
-     */
     private static final int BITE_WINDOW_START = 7;
     private static final int BITE_WINDOW_END = 9;
 
-    /** 0.9167 s of clip. */
     private static final int HORN_SWING_TICKS = 19;
-    /** 1.6 s of clip: 32 ticks exactly. */
     private static final int CLAW_SWING_TICKS = 32;
-    /** 3.35 s of clip: 67 ticks exactly. */
     private static final int STOMP_TICKS = 67;
 
-    /** Both swings land on frame 10, widened by a tick either side like the bite. */
     private static final int SWING_WINDOW_START = 9;
     private static final int SWING_WINDOW_END = 11;
 
-    /**
-     * Where a frontal box starts and how far it runs, in blocks ahead of the animal's centre.
-     *
-     * <p><b>The two must cover {@code GTAttackSelector.ATTACK_RANGE}.</b> The selector commits to an
-     * attack at 8 blocks centre to centre, so a box ending short of that lets the animal swing from a
-     * distance its own hitbox cannot reach: the animation plays and nothing can be hit.
-     *
-     * <p><b>Where the box STARTS matters as much as where it ends.</b> This animal's chest sits 2.5
-     * blocks ahead of its centre, its neck 4.5 and its head 6.1, so starting the box near zero drapes
-     * the damage volume over its own chest and neck — which reads in game as damage landing behind the
-     * head. 3.0 + 5.5 runs from mid-neck to 8.5, half a block past the trigger to cover the animal
-     * drifting backwards mid-swing. Anything closer than 3 blocks is under its chin: the stomp's job.
-     */
-    // Package-private on purpose: GTAttackSelector reads these to check the target fits INSIDE the box
-    // before committing. If the two ever disagree, it goes back to attacking what it cannot touch.
+
     static final float FRONTAL_START = 3.0F;
     static final float FRONTAL_LENGTH = 5.5F;
 
-    /** Shared by the bite and the horn: the two are the same swing as far as coverage goes. */
     static final float FRONTAL_HALF_WIDTH = 3.0F;
     private static final float FRONTAL_HALF_HEIGHT = 1.5F;
 
-    /** The stomp's three impacts. */
     private static final int[] STOMP_FRAMES = {14, 26, 46};
 
-    /** Radius of the shockwave on the ground, in blocks. */
     private static final float STOMP_RADIUS = 8.0F;
-
-    /**
-     * How far off the ground the shockwave still reaches, measured feet to feet.
-     *
-     * <p><b>This is what makes the stomp jumpable.</b> A player's jump peaks at about 1.25 blocks, so
-     * a band of 1.0 leaves the top of the arc clear. Three impacts twelve and twenty ticks apart means
-     * one jump dodges one of them, which is the intended skill.
-     */
     private static final double STOMP_MAX_HEIGHT = 1.0D;
 
-    /**
-     * How far the ground shake carries — well past the damage circle, because a six-block animal
-     * slamming the ground should be felt before it can reach you.
-     */
     private static final double STOMP_SHAKE_RADIUS = 20.0D;
 
-    /** Shake strength under the foot; the library's example uses 0.35 for an ordinary impact. */
     private static final float STOMP_SHAKE_AMPLITUDE = 0.5F;
-    /** Ten ticks. */
     private static final int STOMP_SHAKE_TICKS = 10;
 
-    /**
-     * Contact frames per leg, measured off the clips.
-     *
-     * <p>No leg animates position: the gait lives entirely in the thigh's X rotation, and the cycle
-     * covers the same 37.5-degree sweep in two stretches of very different length. The slow one is the
-     * stance — foot planted, body travelling over it — and the fast one is the swing, so contact is the
-     * fast-to-slow transition. That reading does not depend on the axis sign convention.
-     *
-     * <p>The two legs come out exactly half a phase apart in both clips, which is the check that it is
-     * read correctly.
-     */
+
     private static final int WALK_LEFT_FOOTFALL = 7;
     private static final int WALK_RIGHT_FOOTFALL = 37;
     private static final int SPRINT_LEFT_FOOTFALL = 3;
     private static final int SPRINT_RIGHT_FOOTFALL = 13;
 
-    /**
-     * Well below the stomp's 0.5, and not out of timidity: {@code sprint} lands a foot every 10 ticks —
-     * twice a second while it chases you — and at stomp amplitude that is unwatchable.
-     */
+
     private static final float WALK_SHAKE_AMPLITUDE = 0.25F;
     private static final float SPRINT_SHAKE_AMPLITUDE = 0.40F;
-    /** Fourteen blocks with a linear falloff. */
     private static final double FOOTFALL_SHAKE_RADIUS = 14.0D;
     private static final int FOOTFALL_SHAKE_TICKS = 3;
-    /** Half the gap between feet, so dust comes up under the foot that lands and not under the centre. */
     private static final double FOOTFALL_LATERAL_OFFSET = 1.2D;
-    /**
-     * Scaled against the stomp's 40 at 1.5 spread. Much less than this is invisible underneath an
-     * animal 3.2 blocks wide.
-     */
     private static final int FOOTFALL_DUST_COUNT = 18;
     private static final double FOOTFALL_DUST_SPREAD = 0.7D;
 
-    /**
-     * Every duration here is read off the clip's own {@code withLength}, never estimated.
-     *
-     * <p><b>The constructor's argument order misleads:</b> it is
-     * {@code (name, data, loop, layer, priority, duration)} — layer BEFORE priority. Swapping the two
-     * registers the clip on an additive layer over nothing and it silently never shows, with no error
-     * in the log.
-     *
-     * <p>The two animation files are not split by theme and the names mislead: {@code bite} lives in
-     * {@code GTAnimationsBase}, and the stomp clip is called {@code attack_stomp}.
-     */
+
     @Override
     public void registerAnimations() {
         StandardAnimation idle = new StandardAnimation("idle",

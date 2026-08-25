@@ -52,17 +52,16 @@ public final class SMOPEntities {
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("hell_hippo"))));
 
     /**
-     * 3.0 long and 1.6 tall: one AABB, not the multipart hitbox 1.20.1 gave it. See the port spec —
-     * {@code PartEntity} support does not exist in DeluxeLib yet and lands with the Grand Tyrant,
-     * which needs it far more than a mount does.
+     * 3.0 long and 1.6 tall: one AABB, not a multipart hitbox — {@code PartEntity} support does not
+     * exist in DeluxeLib yet.
      */
     public static final DeferredHolder<EntityType<?>, EntityType<NirasmosaurusEntity>> NIRASMOSAURUS =
             ENTITY_TYPES.register("nirasmosaurus",
                     // WATER_CREATURE. This has now been wrong twice in opposite directions, so the
                     // measurements that settled it are worth keeping.
                     //
-                    // The legacy was CREATURE. A first move to WATER_CREATURE was reverted on the
-                    // reasoning that its cap of 5 is shared with squid, dolphins and nautilus and is
+                    // A first move to WATER_CREATURE was reverted on the reasoning that its cap of
+                    // 5 is shared with squid, dolphins and nautilus and is
                     // always saturated, while the CREATURE pool in ocean biomes is empty — creature: []
                     // in every ocean JSON — so any weight at all would win there. Both halves of that
                     // are true and the conclusion was still wrong, because an empty POOL is worthless
@@ -106,16 +105,14 @@ public final class SMOPEntities {
     /**
      * The Grand Tyrant: 3.2 wide, 6.2 tall, one AABB.
      *
-     * <p>Not the multipart hitbox 1.20.1 gave it — {@code PartEntity} support still does not exist in
-     * DeluxeLib (verified again for this port) and lands as its own piece of library work, shared with
-     * the Nirasmosaurus. Until then, hitting the tail counts as hitting the head.
+     * <p>One AABB and not a multipart hitbox: {@code PartEntity} support still does not exist in
+     * DeluxeLib. Until it does, hitting the tail counts as hitting the head.
      *
      * <p>{@code clientTrackingRange(16)} rather than the 10 the other large mobs use: a six-block
      * animal you cannot see coming is a jump-scare, not a boss.
      *
-     * <p>{@code MobCategory.CREATURE} is the legacy's, kept by explicit decision — see the port spec
-     * for the measurement that says this category is permanently saturated, and for how to confirm it
-     * in game before changing anything.
+     * <p>{@code MobCategory.CREATURE} by explicit decision: the category is permanently saturated, so
+     * confirm in game before changing it.
      */
     public static final DeferredHolder<EntityType<?>, EntityType<GTEntity>> GT =
             ENTITY_TYPES.register("gt",

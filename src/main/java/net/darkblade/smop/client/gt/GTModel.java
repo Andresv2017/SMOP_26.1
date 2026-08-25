@@ -12,7 +12,7 @@ import net.minecraft.client.model.geom.builders.*;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * The Grand Tyrant. Geometry is the untouched 1.20.1 Blockbench export — 45 bones on a 512x512 sheet.
+ * The Grand Tyrant. Geometry is the raw Blockbench export — 45 bones on a 512x512 sheet.
  *
  * <p><b>The bone names come across verbatim</b>, misspelled {@code troath} included. Every clip
  * addresses bones by name at bake time and 26.1 <em>throws</em> on a name this mesh does not define,

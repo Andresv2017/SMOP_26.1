@@ -18,7 +18,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p><b>Bone naming.</b> Every clip addresses bones by name at bake time and 26.1 <em>throws</em> on a
  * name this mesh does not define — no partial match, no fallback. The names come across from the
- * 1.20.1 export verbatim, Hungarian {@code g} prefixes and the misspelled {@code gTroath} included:
+ * export verbatim, Hungarian {@code g} prefixes and the misspelled {@code gTroath} included:
  * renaming them would mean editing thousands of keyframe lines for no functional gain, and a rename
  * that misses one channel fails at render time rather than at compile time.
  *

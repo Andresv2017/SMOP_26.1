@@ -8,14 +8,14 @@ import net.minecraft.client.animation.KeyframeAnimations;
 /**
  * Adult Nirasmosaurus water extras — the showpiece moves, against {@link NirasmosaurusModel}.
  *
- * <p><b>Pruned channels.</b> The 1.20.1 export animated bones this mesh never defines. That version
- * resolved bones with {@code getAnyDescendantWithName(...).ifPresent(...)} and silently skipped what
- * it could not find, so those channels never moved anything there either; 26.1 throws instead.
+ * <p><b>Pruned channels.</b> The Blockbench export animates bones this mesh never defines, and 26.1
+ * THROWS on a bone it cannot resolve rather than skipping it — so those channels are dropped, and
+ * adding one back for a bone that is not in the mesh crashes at bake time.
  *
- * <p><b>Why the clips are split across classes</b> rather than merged into one file per rig, as
- * the other SMOP mobs do: every static initialiser in a class compiles into a single {@code <clinit>}
+ * <p><b>Why the clips are split across classes</b> rather than merged into one file per rig, as the
+ * other SMOP mobs do: every static initialiser in a class compiles into a single {@code <clinit>}
  * method, and the JVM caps a method at 64 KB. All 34 adult clips in one class overflows it — the
- * compiler answers "code too large". The 1.20.1 split was load-bearing, not untidy.
+ * compiler answers "code too large".
  */
 public final class NirasWaterExtraAnimations {
 

@@ -12,15 +12,14 @@ import net.minecraft.client.model.geom.builders.*;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Adult Hell Hippo. Geometry is the untouched 1.20.1 Blockbench export; the port is in
- * {@code setupAnim}, which no longer hand-drives a pile of {@code AnimationState}s — the {@link Rig}
- * resets the pose, blends whatever the {@code MobAnimator} says is playing, and layers head tracking
- * on top, the same shape the Kriftognathus and Tangoftero use.
+ * Adult Hell Hippo. Geometry is the raw Blockbench export; {@code setupAnim} hands the pose to the
+ * {@link Rig}, which resets it, blends whatever the {@code MobAnimator} says is playing and layers
+ * head tracking on top.
  *
  * <p><b>Bone naming.</b> Every clip in {@code HellHippoAnimations} addresses bones by name at bake
  * time and throws on a name this mesh does not define — no partial match, no fallback — so the two
- * files have to agree exactly. The names are carried over from the 1.20.1 export verbatim, including
- * the Spanish root {@code Hipopotamo_Infernal} and the misspelled {@code troath}: renaming them here
+ * files have to agree exactly. The names come straight from the export, including the Spanish root
+ * {@code Hipopotamo_Infernal} and the misspelled {@code troath}: renaming them here
  * would mean editing ~3300 lines of keyframes for no functional gain, and a rename that misses one
  * channel fails at render time rather than at compile time.
  *

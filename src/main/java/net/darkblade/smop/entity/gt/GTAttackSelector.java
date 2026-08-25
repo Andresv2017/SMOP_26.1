@@ -11,10 +11,8 @@ import org.jetbrains.annotations.Nullable;
  * Decides which attack the Grand Tyrant throws, and is the only place its ranges, weights and angles
  * live.
  *
- * <p>This replaces the legacy's {@code GTAttackGoal} (189 lines) plus {@code GTAttackController}
- * (275): both existed to pick an attack, count ticks and fire damage on given frames. Ticking and
- * damage are the animation's job now — see the {@code HitWindow}s in
- * {@code GTEntity.registerAnimations} — so what is left is the choice.
+ * <p>Ticking and damage are the animation's job — see the {@code HitWindow}s in
+ * {@code GTEntity.registerAnimations} — so all that is left here is the choice.
  *
  * <p>Returning {@code null} means "no attack is viable right now"; {@code ChaseTargetBehavior} then
  * keeps closing and, crucially, keeps turning.
@@ -22,7 +20,7 @@ import org.jetbrains.annotations.Nullable;
 public final class GTAttackSelector implements AttackSelector<GTEntity> {
 
     /**
-     * Reach of the three frontal attacks, from the legacy's {@code ATTACK_RANGE = 8.0}.
+     * Reach of the three frontal attacks.
      *
      * <p>Kept in step with {@code GTEntity.FRONTAL_START + FRONTAL_LENGTH}, which is 8.5. The two are a
      * pair: raise this without raising those and the animal commits to swings its own hitbox cannot
@@ -41,13 +39,12 @@ public final class GTAttackSelector implements AttackSelector<GTEntity> {
     private static final int TOTAL_WEIGHT = 100;
 
     /**
-     * Minimum ticks between stomps, from the legacy's {@code STOMP_MIN_GAP_TICKS = 60}. Without it the
-     * weighted roll can come up stomp several times running, and at 67 ticks a throw that is nine
-     * seconds of the fight being one move.
+     * Minimum ticks between stomps. Without it the weighted roll can come up stomp several times
+     * running, and at 67 ticks a throw that is nine seconds of the fight being one move.
      */
     private static final int STOMP_GAP_TICKS = 60;
 
-    /** Height difference above which a stomp would hit nothing, from the legacy's own check. */
+    /** Height difference above which a stomp would hit nothing. */
     private static final double STOMP_MAX_Y_DIFF = 1.0D;
 
     /**
@@ -92,7 +89,6 @@ public final class GTAttackSelector implements AttackSelector<GTEntity> {
             return null;
         }
 
-        // In front: the legacy's weighted roll, unchanged.
         if (stompReady && gt.getRandom().nextInt(TOTAL_WEIGHT) < STOMP_WEIGHT) {
             this.nextStompTime = gt.level().getGameTime() + STOMP_GAP_TICKS;
             return GTState.STOMP;
@@ -132,10 +128,9 @@ public final class GTAttackSelector implements AttackSelector<GTEntity> {
     }
 
     /**
-     * The three conditions the legacy attached to the stomp beyond range, all about the ground actually
-     * being shared: the animal has to be standing on it, the target has to be at substantially the same
-     * height, and it has to be able to see it. Stomping at someone on a ledge two blocks up is the case
-     * this rules out.
+     * Three conditions beyond range, all about the ground actually being shared: the animal has to be
+     * standing on it, the target has to be at substantially the same height, and it has to be able to
+     * see it. Stomping at someone on a ledge two blocks up is what this rules out.
      */
     private boolean canStomp(GTEntity gt, LivingEntity target) {
         return gt.onGround()
