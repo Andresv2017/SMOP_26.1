@@ -40,6 +40,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.InteractionHand;
@@ -67,6 +68,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
@@ -928,9 +931,29 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return super.finalizeSpawn(level, difficulty, reason, spawnData);
     }
 
+    // Not Animal.checkAnimalSpawnRules, which accepts only #minecraft:animals_spawnable_on — and that
+    // tag holds exactly one block, grass_block. Four of the seven biomes this mob is seeded in have no
+    // grass in them at all: the three badlands are terracotta, red sand and coarse dirt, and the grove
+    // is a snow surface over dirt. Those entries existed in the biome modifier and produced nothing,
+    // the same silent way the Nirasmosaurus beach entry did before its placement type was widened.
+    //
+    // Which is the whole point of the biome list in SMOPSpawns: the arid and the frosty coats are only
+    // ever seen if the mob can stand where they belong.
+    //
+    // Powder snow is deliberately not here. It is the grove's other surface block and anything placed
+    // on it falls straight through.
     public static boolean checkKriftoSpawnRules(EntityType<KriftognathusEntity> type, ServerLevelAccessor level,
                                                 EntitySpawnReason reason, BlockPos pos, RandomSource random) {
-        return checkAnimalSpawnRules(type, level, reason, pos, random);
+        BlockPos below = pos.below();
+        BlockState ground = level.getBlockState(below);
+        boolean standable = ground.is(BlockTags.ANIMALS_SPAWNABLE_ON)
+                || ground.is(BlockTags.TERRACOTTA)
+                || ground.is(BlockTags.SAND)
+                || ground.is(BlockTags.DIRT)
+                || ground.is(Blocks.SNOW_BLOCK)
+                || ground.is(Blocks.SNOW);
+        return standable
+                && (EntitySpawnReason.ignoresLightRequirements(reason) || isBrightEnoughToSpawn(level, pos));
     }
 
     // ───────────────────────────────────────────────────── SLEEP ─────

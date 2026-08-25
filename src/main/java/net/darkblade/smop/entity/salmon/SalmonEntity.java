@@ -379,6 +379,14 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
 
     // ───────────────────────────────────────────────────── SPAWNING ─────
 
+    // The entry in SMOPSpawns reads 2-5 and without this it means 2-4: Mob#getMaxSpawnClusterSize
+    // returns 4 and NaturalSpawner closes the group there. Vanilla's salmon overrides it to 5 for
+    // exactly the same reason — its own entry reads 1-5.
+    @Override
+    public int getMaxSpawnClusterSize() {
+        return 5;
+    }
+
     @Override
     public @Nullable SpawnGroupData finalizeSpawn(@NotNull ServerLevelAccessor level,
                                                   @NotNull DifficultyInstance difficulty,
@@ -388,9 +396,21 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         return super.finalizeSpawn(level, difficulty, reason, spawnData);
     }
 
+    // The Y band is vanilla's, copied out of WaterAnimal#checkSurfaceWaterAnimalSpawnRules rather
+    // than called, because that signature is bound to EntityType<? extends WaterAnimal> and this mob
+    // is a TamableAnimal.
+    //
+    // Without it the whole requirement is two blocks of water, which any flooded cave under a river
+    // biome meets. NaturalSpawner rolls Y uniformly from the world floor to the surface, so the
+    // attempts that landed in an aquifer were passing: salmon at Y -40 that nobody will ever see,
+    // spending the same WATER_AMBIENT budget as the ones in the river. The band is what keeps the
+    // entry meaning "in the river".
     public static boolean checkSalmonSpawnRules(EntityType<SalmonEntity> type, ServerLevelAccessor level,
                                                 EntitySpawnReason reason, BlockPos pos, RandomSource random) {
-        return level.getFluidState(pos).is(FluidTags.WATER)
+        int seaLevel = level.getSeaLevel();
+        return pos.getY() >= seaLevel - 13
+                && pos.getY() <= seaLevel
+                && level.getFluidState(pos).is(FluidTags.WATER)
                 && level.getBlockState(pos.above()).is(Blocks.WATER);
     }
 

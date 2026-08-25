@@ -6,7 +6,7 @@
       "type": "smop:salmon",
       "maxCount": 5,
       "minCount": 2,
-      "weight": 12
+      "weight": 5
     }
   ]
 }

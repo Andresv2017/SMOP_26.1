@@ -44,14 +44,20 @@ import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.BossEvent;
+import net.minecraft.world.DifficultyInstance;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.BodyRotationControl;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -97,6 +103,25 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                 .add(Attributes.ATTACK_KNOCKBACK, 0.5D)
                 .add(Attributes.ATTACK_DAMAGE, 2.0D)
                 .add(Attributes.STEP_HEIGHT, 2.5D);
+    }
+
+    // A Grand Tyrant that walks off the loaded area is gone for good, and the measurement is what
+    // says so rather than a preference. CREATURE is a global budget of 10 that reads 83 to 155 in
+    // every biome of a fresh world, and /smop debug spawn sim attributed 100% of 8670 attempts to
+    // that one gate in four separate samples. So the periodic cycle never produces one: every GT in
+    // a world arrives during chunk generation, once, and is never replaced.
+    //
+    // requiresCustomPersistence rather than removeWhenFarAway, because it does both halves of the
+    // job. Mob#checkDespawn skips a mob that declares it, and NaturalSpawner#createState leaves it
+    // out of the category census — so a standing GT keeps its place in the world without spending
+    // any of the budget that is already several times over.
+    //
+    // The animals do not need this: Animal#removeWhenFarAway returns false, so the Tangoftero, the
+    // Kriftognathus and the Hell Hippo already stay. CortexMonster extends PathfinderMob, where the
+    // default is to despawn, which is why this mob was the only one disappearing.
+    @Override
+    public boolean requiresCustomPersistence() {
+        return true;
     }
 
     // ───────────────────────────────────────────────────── CORTEX ─────
@@ -364,8 +389,69 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
     public void tick() {
         super.tick();
         if (!this.level().isClientSide()) {
+            if (this.pendingLoneCheck && this.level() instanceof ServerLevel serverLevel) {
+                this.settleAlone(serverLevel);
+            }
             this.bossBar.setProgress(this.getHealth() / this.getMaxHealth());
         }
+    }
+
+    // ───────────────────────────────────────────────────── ONE TO A PLACE ─────
+
+    // One Grand Tyrant to an area. The check cannot live in the spawn rule, which is where it
+    // belongs: every GT arrives through chunk generation and WorldGenRegion#getEntities returns an
+    // empty list unconditionally, so the test would have passed every single time having seen
+    // nothing. Instead the animal is born owing the check, the debt is written to disk with it, and
+    // it is paid on the first tick after the chunk loads.
+    //
+    // What it is paid AGAINST is the part that had to be corrected. Asking the level for nearby GTs
+    // looks right and measures wrong: a level only knows about loaded entities, and two that
+    // generated three hundred blocks apart are never loaded in the same moment. In play that gave
+    // three in one plains and three in one desert, none of them ever able to see the others.
+    //
+    // GTLandmarks is a claim list in the level's save data, so it does not care what is in memory.
+    //
+    // 320 blocks is the knob. It puts one GT in roughly every 640-block square, which is wider than
+    // most biome patches, so what you get is one to a biome and some biomes without. Turn it down if
+    // they end up too thin on the ground; the spawn weight is not the lever any more, because the
+    // claim decides the outcome and the weight only decides how many candidates get turned away.
+    private static final int LONE_RADIUS = 320;
+
+    private static final String PENDING_LONE_CHECK = "PendingLoneCheck";
+
+    private boolean pendingLoneCheck;
+
+    @Override
+    public @Nullable SpawnGroupData finalizeSpawn(@NotNull ServerLevelAccessor level,
+                                                  @NotNull DifficultyInstance difficulty,
+                                                  @NotNull EntitySpawnReason reason,
+                                                  @Nullable SpawnGroupData spawnData) {
+        // Only what the world put there. A summoned or egg-spawned one is somebody's decision and
+        // does not get culled for standing next to another.
+        this.pendingLoneCheck = reason == EntitySpawnReason.NATURAL
+                || reason == EntitySpawnReason.CHUNK_GENERATION;
+        return super.finalizeSpawn(level, difficulty, reason, spawnData);
+    }
+
+    private void settleAlone(ServerLevel level) {
+        this.pendingLoneCheck = false;
+        if (!GTLandmarks.of(level).claim(this.blockPosition(), LONE_RADIUS)) {
+            this.discard();
+        }
+    }
+
+    @Override
+    protected void addAdditionalSaveData(@NotNull ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        if (this.pendingLoneCheck) {
+            output.putBoolean(PENDING_LONE_CHECK, true);
+        }
+    }
+
+    @Override
+    protected void readAdditionalSaveData(@NotNull ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.pendingLoneCheck = input.getBooleanOr(PENDING_LONE_CHECK, false);
     }
 
     // ───────────────────────────────────────────────────── ANIMATIONS ─────

@@ -43,8 +43,11 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPSpawnDebug {
@@ -59,15 +62,33 @@ public final class SMOPSpawnDebug {
 
     private static final int DEFAULT_PASSES = 15;
 
+    // Every mob with a natural spawn entry in SMOPSpawns. The sim takes one at a time because its
+    // whole output is where THAT mob's attempts died; the watch takes all of them at once because it
+    // is a listener on the real pipeline and filtering it down would only hide neighbours competing
+    // for the same category cap.
+    private record Target(String name, Supplier<EntityType<?>> type) {}
+
+    private static final List<Target> TARGETS = List.of(
+            new Target("tangoftero", SMOPEntities.TANGOFTERO::get),
+            new Target("salmon", SMOPEntities.SALMON::get),
+            new Target("kriftognathus", SMOPEntities.KRIFTOGNATHUS::get),
+            new Target("hell_hippo", SMOPEntities.HELL_HIPPO::get),
+            new Target("nirasmosaurus", SMOPEntities.NIRASMOSAURUS::get),
+            new Target("gt", SMOPEntities.GT::get));
+
     static LiteralArgumentBuilder<CommandSourceStack> build() {
+        LiteralArgumentBuilder<CommandSourceStack> sim = Commands.literal("sim");
+        for (Target target : TARGETS) {
+            sim.then(Commands.literal(target.name())
+                    .executes(ctx -> simulate(ctx.getSource(), target.type().get(), DEFAULT_PASSES))
+                    .then(Commands.argument("passes", IntegerArgumentType.integer(1, 200))
+                            .executes(ctx -> simulate(ctx.getSource(), target.type().get(),
+                                    IntegerArgumentType.getInteger(ctx, "passes")))));
+        }
         return Commands.literal("debug").then(Commands.literal("spawn")
                 .then(Commands.literal("state")
                         .executes(ctx -> state(ctx.getSource())))
-                .then(Commands.literal("sim")
-                        .executes(ctx -> simulate(ctx.getSource(), DEFAULT_PASSES))
-                        .then(Commands.argument("passes", IntegerArgumentType.integer(1, 200))
-                                .executes(ctx -> simulate(ctx.getSource(),
-                                        IntegerArgumentType.getInteger(ctx, "passes")))))
+                .then(sim)
                 .then(Commands.literal("watch")
                         .executes(ctx -> watch(ctx.getSource(), 60))
                         .then(Commands.argument("seconds", IntegerArgumentType.integer(5, 600))
@@ -99,8 +120,12 @@ public final class SMOPSpawnDebug {
         } else {
             int chunks = spawnState.getSpawnableChunkCount();
             out.add("spawnableChunkCount " + chunks + "  (cap = max * chunks / " + MAGIC_NUMBER + ")");
-            for (MobCategory category : new MobCategory[]{MobCategory.CREATURE, MobCategory.WATER_CREATURE,
-                    MobCategory.WATER_AMBIENT, MobCategory.UNDERGROUND_WATER_CREATURE}) {
+            // MONSTER is in the table for one reason: it is the escape hatch on the board for the
+            // Grand Tyrant, and the only honest way to take it is to see its budget next to CREATURE's
+            // in the same world. Cap 70 against CREATURE's 10, and non-persistent, so it turns over.
+            for (MobCategory category : new MobCategory[]{MobCategory.CREATURE, MobCategory.MONSTER,
+                    MobCategory.WATER_CREATURE, MobCategory.WATER_AMBIENT,
+                    MobCategory.UNDERGROUND_WATER_CREATURE}) {
                 int count = spawnState.getMobCategoryCounts().getInt(category);
                 int cap = category.getMaxInstancesPerChunk() * chunks / MAGIC_NUMBER;
                 out.add(String.format("  %-28s %3d / %3d %s", category.getName(), count, cap,
@@ -109,8 +134,8 @@ public final class SMOPSpawnDebug {
         }
 
         // The pool as the spawner sees it here, biome modifiers already folded in.
-        for (MobCategory category : new MobCategory[]{MobCategory.CREATURE, MobCategory.WATER_CREATURE,
-                MobCategory.WATER_AMBIENT}) {
+        for (MobCategory category : new MobCategory[]{MobCategory.CREATURE, MobCategory.MONSTER,
+                MobCategory.WATER_CREATURE, MobCategory.WATER_AMBIENT}) {
             WeightedList<MobSpawnSettings.SpawnerData> pool = poolAt(level, biome, category, at);
             if (pool.isEmpty()) {
                 out.add(category.getName() + " pool: (empty)");
@@ -215,10 +240,9 @@ public final class SMOPSpawnDebug {
         }
     }
 
-    private static int simulate(CommandSourceStack source, int passes) {
+    private static int simulate(CommandSourceStack source, EntityType<?> watched, int passes) {
         ServerLevel level = source.getLevel();
         BlockPos origin = BlockPos.containing(source.getPosition());
-        EntityType<?> watched = SMOPEntities.NIRASMOSAURUS.get();
         MobCategory category = watched.getCategory();
         RandomSource random = level.getRandom();
 
@@ -419,22 +443,25 @@ public final class SMOPSpawnDebug {
 
     // ───────────────────────────────────────────────────── WATCH ─────
 
+    private static final class Tally {
+        private int placementChecked;
+        private int placementPassed;
+        private int positionChecked;
+        private int positionPassed;
+        private int finalized;
+        private int chunkGenFinalized;
+    }
+
     private static int watchTicksLeft;
-    private static int placementChecked;
-    private static int placementPassed;
-    private static int positionChecked;
-    private static int positionPassed;
-    private static int finalized;
-    private static int chunkGenFinalized;
+
+    // One row per mob, created the first time that mob reaches the pipeline. A mob with no row at the
+    // end is not a gap in the report, it IS the report: nothing of that type ever got as far as
+    // checkSpawnRules, and only the sim can say at which of the earlier gates it died.
+    private static final Map<String, Tally> TALLIES = new LinkedHashMap<>();
 
     private static int watch(CommandSourceStack source, int seconds) {
         watchTicksLeft = seconds * 20;
-        placementChecked = 0;
-        placementPassed = 0;
-        positionChecked = 0;
-        positionPassed = 0;
-        finalized = 0;
-        chunkGenFinalized = 0;
+        TALLIES.clear();
         LOGGER.info("=== spawn watch armed for {}s ===", seconds);
         source.sendSuccess(() -> Component
                 .literal("Watching the real spawn pipeline for " + seconds + "s. Roam, then read the log.")
@@ -442,8 +469,16 @@ public final class SMOPSpawnDebug {
         return 1;
     }
 
+    private static Tally tallyFor(EntityType<?> type) {
+        return TALLIES.computeIfAbsent(BuiltInRegistries.ENTITY_TYPE.getKey(type).getPath(),
+                key -> new Tally());
+    }
+
+    // By namespace, not by a list of types. A list has to be edited every time a mob joins, and
+    // forgetting is silent: the watch reports nothing and nothing reads exactly like "it never spawns".
+    // MobSpawnEvent only ever fires for Mobs, so the arrows and spears in the namespace cost nothing.
     private static boolean ours(EntityType<?> type) {
-        return type == SMOPEntities.NIRASMOSAURUS.get() || type == SMOPEntities.SALMON.get();
+        return BuiltInRegistries.ENTITY_TYPE.getKey(type).getNamespace().equals(SMOP.MOD_ID);
     }
 
     @SubscribeEvent
@@ -451,9 +486,10 @@ public final class SMOPSpawnDebug {
         if (watchTicksLeft <= 0 || !ours(event.getEntityType())) {
             return;
         }
-        placementChecked++;
+        Tally tally = tallyFor(event.getEntityType());
+        tally.placementChecked++;
         if (event.getPlacementCheckResult()) {
-            placementPassed++;
+            tally.placementPassed++;
         }
         LOGGER.info("placementCheck {} at {} reason={} -> {}",
                 BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntityType()),
@@ -465,12 +501,13 @@ public final class SMOPSpawnDebug {
         if (watchTicksLeft <= 0 || !ours(event.getEntity().getType())) {
             return;
         }
-        positionChecked++;
         Mob mob = event.getEntity();
+        Tally tally = tallyFor(mob.getType());
+        tally.positionChecked++;
         boolean dflt = mob.checkSpawnRules(event.getLevel(), event.getSpawnType())
                 && mob.checkSpawnObstruction(event.getLevel());
         if (dflt) {
-            positionPassed++;
+            tally.positionPassed++;
         }
         LOGGER.info("positionCheck {} at {},{},{} reason={} -> {}",
                 BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()),
@@ -482,9 +519,10 @@ public final class SMOPSpawnDebug {
         if (watchTicksLeft <= 0 || !ours(event.getEntity().getType())) {
             return;
         }
-        finalized++;
+        Tally tally = tallyFor(event.getEntity().getType());
+        tally.finalized++;
         if (event.getSpawnType() == EntitySpawnReason.CHUNK_GENERATION) {
-            chunkGenFinalized++;
+            tally.chunkGenFinalized++;
         }
         LOGGER.info("SPAWNED {} at {},{},{} reason={}",
                 BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntity().getType()),
@@ -498,14 +536,22 @@ public final class SMOPSpawnDebug {
         }
         if (--watchTicksLeft == 0) {
             LOGGER.info("=== spawn watch over ===");
-            LOGGER.info("  placementCheck reached {} times, passed {}", placementChecked, placementPassed);
-            LOGGER.info("  positionCheck  reached {} times, passed {}", positionChecked, positionPassed);
-            LOGGER.info("  finalized {} ({} from chunk generation, {} from the periodic cycle)",
-                    finalized, chunkGenFinalized, finalized - chunkGenFinalized);
-            if (placementChecked == 0) {
+            if (TALLIES.isEmpty()) {
+                LOGGER.info("  not one SMOP mob reached any stage of the pipeline.");
+            }
+            TALLIES.forEach((name, tally) -> {
+                LOGGER.info("  {}", name);
+                LOGGER.info("    placementCheck reached {} times, passed {}",
+                        tally.placementChecked, tally.placementPassed);
+                LOGGER.info("    positionCheck  reached {} times, passed {}",
+                        tally.positionChecked, tally.positionPassed);
+                LOGGER.info("    finalized {} ({} from chunk generation, {} from the periodic cycle)",
+                        tally.finalized, tally.chunkGenFinalized, tally.finalized - tally.chunkGenFinalized);
+            });
+            if (TALLIES.values().stream().allMatch(tally -> tally.placementChecked == 0)) {
                 LOGGER.info("  ZERO placement checks: every attempt died BEFORE checkSpawnRules —"
                         + " category cap, Y roll, player distance, biome pool or the placement type."
-                        + " Run /smop debug spawn sim to see which.");
+                        + " Run /smop debug spawn sim <mob> to see which.");
             }
         }
     }

@@ -30,6 +30,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.equipment.Equippable;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.sounds.SoundEvent;
@@ -76,6 +77,8 @@ import net.minecraft.world.entity.HasCustomInventoryScreen;
 import net.minecraft.world.inventory.ChestMenu;
 import net.darkblade.smop.entity.ai.navigation.SeabedPathNavigation;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
@@ -1037,9 +1040,23 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         level.addFreshEntity(calf);
     }
 
+    // Mud, on top of what an animal normally accepts. Animal.checkAnimalSpawnRules asks for
+    // #minecraft:animals_spawnable_on, and that tag is one block, grass_block, so in a mangrove swamp
+    // this animal could only ever appear on the grass patches between the mud — measured at one
+    // placement check passing out of nine, the worst rate of any mob in the mod.
+    //
+    // The mangrove is where an amphibious animal this size belongs most, which is the reason the biome
+    // is in its list at all, and a hippo that will not stand on the floor of the place is not really
+    // seeded there. Muddy mangrove roots come along for the same reason: they are the other half of
+    // that floor.
     public static boolean checkHellHippoSpawnRules(EntityType<HellHippoEntity> type, ServerLevelAccessor level,
                                                    EntitySpawnReason reason, BlockPos pos, RandomSource random) {
-        return checkAnimalSpawnRules(type, level, reason, pos, random);
+        BlockState ground = level.getBlockState(pos.below());
+        boolean standable = ground.is(BlockTags.ANIMALS_SPAWNABLE_ON)
+                || ground.is(Blocks.MUD)
+                || ground.is(Blocks.MUDDY_MANGROVE_ROOTS);
+        return standable
+                && (EntitySpawnReason.ignoresLightRequirements(reason) || isBrightEnoughToSpawn(level, pos));
     }
 
     @Override

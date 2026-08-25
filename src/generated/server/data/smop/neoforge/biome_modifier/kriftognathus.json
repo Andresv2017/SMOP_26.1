@@ -13,7 +13,7 @@
     {
       "type": "smop:kriftognathus",
       "maxCount": 3,
-      "minCount": 1,
+      "minCount": 2,
       "weight": 8
     }
   ]

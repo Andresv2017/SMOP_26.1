@@ -20,18 +20,35 @@ public final class SMOPSpawns {
         // One entry, not three: DeluxeBiomeSpawnProvider names its output file after the ENTITY, so a
         // second entry for the same mob would overwrite the first rather than add to it. Hence an
         // explicit biome list instead of one tag per family.
+        //
+        // Minimum two, not one. Measured in play: the biome list works — chunk generation was
+        // producing them in the badlands and the jungle alike — but a good share of the groups came
+        // out as a single animal, and one is not what this mob reads as. The group loop still drops
+        // members whose own position check fails, so two is a floor on what is asked for, not on
+        // what lands.
         DeluxeBiomeSpawns.builder(SMOPEntities.KRIFTOGNATHUS::get, MobCategory.CREATURE)
-                .spawnRate(8, 1, 3)
+                .spawnRate(8, 2, 3)
                 .biomes(Biomes.JUNGLE, Biomes.SPARSE_JUNGLE,
                         Biomes.BADLANDS, Biomes.WOODED_BADLANDS, Biomes.ERODED_BADLANDS,
                         Biomes.SNOWY_TAIGA, Biomes.GROVE)
                 .submit();
 
-        // Rivers, by tag rather than by name so every river variant is covered at once. The salmon
-        // is WATER_AMBIENT, a category with its own (small) spawn cap, so a generous weight here
-        // still does not crowd the water out.
+        // Rivers, by tag rather than by name so every river variant is covered at once.
+        //
+        // Weight 5 is parity with the vanilla salmon, the only other entry in a river's WATER_AMBIENT
+        // pool: half the fish rolls each. It was 12, argued against the category's small cap on the
+        // grounds that no weight could crowd the water out. The cap is the wrong axis — the cap decides
+        // whether the category gets a turn, the POOL decides who wins the turn — and 12 against
+        // vanilla's 5 took 71% of every fish roll in every river in the world.
+        //
+        // WATER_AMBIENT stays. It is the mirror image of why CREATURE could not be trusted at sea: cap
+        // 20 instead of 10, non-persistent so it is consulted every tick instead of one in four hundred,
+        // and its occupants despawn — SMOPWaterAnimal#removeWhenFarAway lets a wild salmon go — so the
+        // budget turns over instead of setting. The fry hatched from roe are the one exception and they
+        // are already handled: RoeEggsBlock marks them persistence-required, which is what takes a mob
+        // out of the census in NaturalSpawner#createState.
         DeluxeBiomeSpawns.builder(SMOPEntities.SALMON::get, MobCategory.WATER_AMBIENT)
-                .spawnRate(12, 2, 5)
+                .spawnRate(5, 2, 5)
                 .biomeTag(BiomeTags.IS_RIVER)
                 .submit();
 
