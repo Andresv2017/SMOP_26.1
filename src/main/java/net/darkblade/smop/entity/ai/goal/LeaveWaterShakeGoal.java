@@ -6,44 +6,18 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.EnumSet;
 
-/**
- * Shakes the water off after a swim. The animal has to have been in the water long enough to
- * actually be soaked; stepping through a puddle does not earn a shake.
- *
- * <pre>{@code
- * this.goalSelector.addGoal(3, new LeaveWaterShakeGoal(this, "shake", 100));
- * }</pre>
- *
- * <p>Reusable rather than hippo-specific — the Nirasmosaurus is amphibious too, and the only things
- * that differ are the clip and how long counts as soaked.
- *
- * <p><b>The soak is counted in {@link #canUse()}, and it has to be.</b> Vanilla calls {@code tick()}
- * only on a goal that is already running, so a counter kept there can never raise the flag that would
- * start the goal — a circle that ships the behaviour dead.
- *
- * <p>That in turn is why the counter accrues by <em>elapsed {@code tickCount}</em> instead of
- * {@code ++}: {@code GoalSelector} only re-evaluates {@code canUse} on alternate ticks (see
- * {@code Mob#serverAiStep}), so incrementing by one per call would quietly stretch a 100-tick
- * threshold into 200 real ticks. Measuring against the clock is exact no matter how often the
- * selector gets round to asking.
- */
 public class LeaveWaterShakeGoal extends Goal {
 
     private final SMOPAnimal mob;
     private final String clip;
     private final int soakTicks;
 
-    /** {@link #lastSeenTick} before the first evaluation, so the first sample sets a baseline. */
     private static final int UNSEEN = -1;
 
     private int lastSeenTick = UNSEEN;
     private int soakedTicks;
     private boolean playing;
 
-    /**
-     * @param clip      the gesture to play, as registered on the animator
-     * @param soakTicks how long in the water before a shake is earned
-     */
     public LeaveWaterShakeGoal(@NotNull SMOPAnimal mob, @NotNull String clip, int soakTicks) {
         this.mob = mob;
         this.clip = clip;
@@ -69,10 +43,6 @@ public class LeaveWaterShakeGoal extends Goal {
                 && !this.mob.isInSleepCycle();
     }
 
-    /**
-     * Tops up the soak against the world clock. Leaving the water before the threshold resets it —
-     * a shake is for a real swim, and two brief dips should not add up to one.
-     */
     private void accrueSoak() {
         int now = this.mob.tickCount;
         if (this.lastSeenTick == UNSEEN) {

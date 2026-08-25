@@ -11,15 +11,6 @@ import net.minecraft.client.model.geom.builders.*;
 import net.darkblade.smop.SMOP;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Adult Tangoftero. Geometry is the untouched Blockbench export; what changed in the port is that
- * {@code setupAnim} no longer hand-drives a dozen {@code AnimationState}s — the {@link Rig} resets
- * the pose, blends whatever the {@code MobAnimator} says is playing, and layers head tracking on
- * top as an additive.
- *
- * <p>Note the skeleton has {@code epiglotis}, {@code muscles} and {@code tail_tip}, which the baby
- * model does not — see {@code TangofteroEntity#registerAnimations} for why that matters.
- */
 public class TangofteroModel extends EntityModel<DeluxeEntityRenderState> {
 
     public static final ModelLayerLocation LAYER_LOCATION =

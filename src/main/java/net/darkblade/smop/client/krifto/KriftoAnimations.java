@@ -5,23 +5,6 @@ import net.minecraft.client.animation.AnimationDefinition;
 import net.minecraft.client.animation.Keyframe;
 import net.minecraft.client.animation.KeyframeAnimations;
 
-/**
- * Adult Kriftognathus clips, straight from the Blockbench export, against the bone names in
- * {@link KriftognathusModel} — {@code piglug}, {@code neck}, {@code head}, and the rest, all
- * unprefixed. A clip naming a bone this mesh does not define throws at bake time, on the first frame
- * the mob is rendered, so the two files have to agree exactly.
- *
- * <p>Two clips below are <b>not</b> in the current export and are kept from the previous one:
- * {@code aidle_perched} and {@code bite_flight}. Both are still registered and played, and both were
- * converted to this naming convention by hand. The previous export's {@code attack} was kept for the
- * same reason at first and has since been dropped — the adult's ground pounce is {@code sprint_bite}
- * now (it is still <em>registered</em> under the name {@code "attack"}; see
- * {@code KriftognathusEntity#registerAnimations()}).
- *
- * <p>The export named three of these with hyphens ({@code l-idle}, {@code a-idle},
- * {@code sprint-bite}), which are not legal Java identifiers; they are {@code lidle}, {@code aidle}
- * and {@code sprint_bite} here.
- */
 public class KriftoAnimations {
 
 

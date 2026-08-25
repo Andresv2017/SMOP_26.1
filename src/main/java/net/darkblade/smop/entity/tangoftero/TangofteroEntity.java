@@ -65,42 +65,26 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-/**
- * The Tangoftero: a small, flocking, nest-guarding scavenger that hates the undead.
- *
- * <p>Tame it with a rabbit, breed it with chicken, and feed it rotten flesh to make it roar — a roar
- * that sends every undead nearby running.
- */
 public class TangofteroEntity extends SMOPAnimal
         implements ISleepThreatEvaluator, RandomVariantCapable {
 
     // ───────────────────────────────────────────────────── TUNING ─────
 
-    /** Only one roar per this many ticks, so feeding a stack of flesh is not a panic button. */
     private static final int ROAR_COOLDOWN_TICKS = 600;
-    /** Length of the {@code bite} clip (0.75 s); its last frame is what starts an armed roar. */
     private static final int BITE_CLIP_TICKS = 15;
-    /** Frame of the {@code roar} clip on which the undead scatter — the loud part of the bellow. */
     private static final int SCARE_FRAME = 40;
-    /** How far the roar reaches, and how far it throws the undead's pathing target. */
     private static final double SCARE_RADIUS = 10.0D;
     private static final double SCARE_FLEE_DISTANCE = 7.0D;
-    /** Navigation speed the scattered undead retreat at. */
     private static final double SCARE_SPEED = 1.2D;
 
     private static final int BITE_COOLDOWN_TICKS = 20;
     private static final float HEAL_ROTTEN_FLESH = 6.0F;
     private static final float HEAL_OTHER_FOOD = 3.0F;
 
-    /** Matches {@code DirectionalMoveControl}'s own face-lock radius, so its steering and
-     *  {@link #faceCombatTarget()} cover one continuous range instead of leaving a gap in which
-     *  nothing turns the body. */
     private static final double FACE_LOCK_RADIUS = 4.0D;
 
-    /** Wild flock aggro: undead only. Tamed ones also defend against players who hit their owner. */
     public static final Predicate<LivingEntity> UNDEAD_SELECTOR =
             entity -> entity.is(EntityTypeTags.UNDEAD);
-    /** Nest defence is less picky — anything that is not another Tangoftero gets warned off. */
     public static final Predicate<LivingEntity> NEST_THREAT_SELECTOR =
             entity -> entity instanceof Player || entity.is(EntityTypeTags.UNDEAD);
 
@@ -110,7 +94,6 @@ public class TangofteroEntity extends SMOPAnimal
     // ───────────────────────────────────────────────────── STATE ─────
 
     private int biteCooldown;
-    /** A feeding has earned a roar; the {@code bite} clip's last frame cashes it in. */
     private boolean roarArmed;
     private int roarTicksLeft;
     private long lastRoarTick = -ROAR_COOLDOWN_TICKS;
@@ -128,24 +111,11 @@ public class TangofteroEntity extends SMOPAnimal
         this.moveControl = new DirectionalMoveControl<>(this).setTurnSpeed(10.0F).setCombatTurnSpeed(40.0F);
     }
 
-    /**
-     * 26.1: {@code Mob#bodyRotationControl} is private/final, so a custom control is supplied by
-     * overriding this (called from {@code Mob}'s constructor) rather than assigning the field.
-     */
     @Override
     protected @NotNull BodyRotationControl createBodyControl() {
         return new SmoothBodyRotationControl<>(this);
     }
 
-    /**
-     * Built from {@link Animal#createAnimalAttributes()}, not {@code createLivingAttributes()}.
-     *
-     * <p>Vanilla's {@code TemptGoal} reads {@code Attributes.TEMPT_RANGE} (TemptGoal.java:58), and an
-     * attribute the supplier never
-     * declared throws {@code Can't find attribute minecraft:tempt_range} on the first tick.
-     * {@code createAnimalAttributes()} is just {@code Mob.createMobAttributes().add(TEMPT_RANGE, 10)}
-     * — the correct base for anything extending {@code Animal}.
-     */
     public static AttributeSupplier.Builder createAttributes() {
         return Animal.createAnimalAttributes()
                 .add(Attributes.MAX_HEALTH, 10.0D)
@@ -170,11 +140,6 @@ public class TangofteroEntity extends SMOPAnimal
 
     // ───────────────────────────────────────────────────── GOALS ─────
 
-    /**
-     * Priorities matter more than they used to: {@code SleepGoal} preempts everything below it
-     * through its MOVE/LOOK/JUMP flags, and following the owner outranks wandering — with wandering
-     * above it, a flag is needed to break the tie.
-     */
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
@@ -217,18 +182,6 @@ public class TangofteroEntity extends SMOPAnimal
 
     // ───────────────────────────────────────────────────── ANIMATIONS ─────
 
-    /**
-     * Adult and baby have separate Blockbench exports whose skeletons genuinely differ — the baby
-     * model has no {@code tail_tip}, {@code epiglotis} or {@code muscles}. Baking an adult clip
-     * against the baby model therefore throws {@code Cannot animate tail_tip, which does not exist
-     * in model}. {@link AnimSource} resolves its supplier on every query, so each clip picks its
-     * own definition by age and stays in lockstep with the model the renderer swapped in (both read
-     * {@code isBaby} within the same tick).
-     *
-     * <p>Exclusion between clips is done by <b>play condition, not priority</b>: {@code MobAnimator}
-     * only stops animations whose priority is {@code <=} the incoming one, so a lower-priority idle
-     * would otherwise keep playing underneath an attack.
-     */
     @Override
     public void registerAnimations() {
         StandardAnimation idle = clip("idle", () -> TangoAnimations.idle, () -> TangoBabyAnimations.idle,
@@ -357,39 +310,10 @@ public class TangofteroEntity extends SMOPAnimal
         this.animator().registerDeath(death);
     }
 
-    /**
-     * True when the locomotion family is allowed to run at all.
-     *
-     * <p><b>It deliberately does not exclude sleeping, roaring or attacking</b>, even though those
-     * clips must be the ones on screen. Exclusion is by PRIORITY: {@code BlendLayer#current} renders
-     * the lowest priority number, every one-shot here sits at 0 or 1 against locomotion's 2-3, and
-     * the auto-start loop will not start locomotion underneath a lower number either.
-     *
-     * <p>Excluding them by condition costs the gap at the far end. The animator runs on
-     * {@code EntityTickEvent.Pre}, ahead of the goals, so on the tick a one-shot expires the gating
-     * flag is still set: the one-shot stops, locomotion cannot start, and the layer has nothing
-     * playing until the next tick. {@link Rig} calls {@code resetPose()} every frame, so an empty
-     * layer is not "hold the last frame" — it is the BIND POSE, and the model visibly collapses and
-     * snaps back.
-     */
     private boolean canPlayLocomotion() {
         return !this.isDeadOrDying();
     }
 
-    /**
-     * Builds a clip whose definition is chosen by age <b>lazily</b>.
-     *
-     * <p>The suppliers are not a style choice. {@code AnimationDefinition} is {@code @OnlyIn(Dist.CLIENT)},
-     * and {@code registerAnimations()} runs on BOTH sides (MobAnimator hooks EntityJoinLevelEvent).
-     * Passing {@code TangoAnimations.idle} directly would read the static field here, load the
-     * class, and kill a dedicated server with
-     * {@code ClassNotFoundException: net.minecraft.client.animation.AnimationDefinition$Builder}.
-     * Note MobAnimator's {@code catch (Exception)} does not save you: a failing static initialiser
-     * throws {@code ExceptionInInitializerError}/{@code NoClassDefFoundError}, which are Errors.
-     *
-     * <p>Inside the lambda the field is only read during client rendering, which is exactly the
-     * shape DeluxeLib's own mobs use ({@code new AnimSource(() -> OwlAnimation.FLY_IDLE)}).
-     */
     private StandardAnimation clip(String name, Supplier<Object> adult, Supplier<Object> baby,
                                    Loop loop, int priority, float seconds) {
         return new StandardAnimation(name,
@@ -407,22 +331,6 @@ public class TangofteroEntity extends SMOPAnimal
         }
     }
 
-    /**
-     * Chicks of this species never fight — not the undead, not whoever hit them, not alongside the
-     * flock.
-     *
-     * <p>Enforced here rather than per goal because every route to a target funnels through this one
-     * call, and gating them one by one leaves {@code HurtByTargetGoal} — a vanilla goal with no
-     * predicate hook — as a hole, plus any goal added later as another.
-     *
-     * <p>Refusing the TARGET and not just the bite is what stops the chick from <em>chasing</em>:
-     * the melee goal keys off {@code getTarget()}, and so does the {@code sprint} clip through
-     * {@code isAggressive()}. Blocking the swing alone leaves the baby running the zombie down and
-     * snapping at nothing.
-     *
-     * <p>Clearing a target ({@code null}) is always allowed — growing up mid-fight must not strand
-     * an adult's target on a mob that can no longer act on it.
-     */
     @Override
     public void setTarget(@Nullable LivingEntity target) {
         if (target != null && this.isBaby()) {
@@ -431,17 +339,6 @@ public class TangofteroEntity extends SMOPAnimal
         super.setTarget(target);
     }
 
-    /**
-     * Keeps the body pointed at the enemy for as long as one is engaged.
-     *
-     * <p>{@link DirectionalMoveControl} only steers while it has a waypoint, and
-     * {@code AnimatableMeleeAttackGoal} stops the navigation as soon as the target is inside reach —
-     * exactly the ticks during which the bite fires. {@code AnimatableMeleeAttackGoal} does not make
-     * this call itself, so the entity does.
-     *
-     * <p>Skipped while the mob is pinned (asleep, roaring): those states own the pose, and turning
-     * under them would swing the whole body while the clip plays.
-     */
     private void faceCombatTarget() {
         LivingEntity target = this.getTarget();
         if (target == null || !target.isAlive() || this.isMovementLocked() || this.isDeadOrDying()) {
@@ -466,15 +363,6 @@ public class TangofteroEntity extends SMOPAnimal
         }
     }
 
-    /**
-     * Starts the roar if one was armed by the last feeding. Fired from the final frame of the
-     * {@code bite} clip, so the rear-up follows the swallow instead of a second timer guessing when
-     * the swallow ended.
-     *
-     * <p>Raises the shared roaring state, not just the clip: that flag is what pins the mob in place
-     * ({@link #isMovementLocked()}). Playing the clip alone would leave the Tangoftero strolling
-     * through its own roar.
-     */
     private void startArmedRoar() {
         if (!this.roarArmed) {
             return;
@@ -485,12 +373,6 @@ public class TangofteroEntity extends SMOPAnimal
         this.animator().play(this.animator().getByName(ANIM_ROAR));
     }
 
-    /**
-     * Sends every nearby undead pathing away from this mob.
-     *
-     * <p>The loop lives in {@link UndeadScatter}, shared with the tango arrow. The numbers stay here:
-     * they are this animal's, not the helper's.
-     */
     private void scareUndead() {
         UndeadScatter.scatter(this.level(), this.position(),
                 SCARE_RADIUS, SCARE_FLEE_DISTANCE, SCARE_SPEED, this);
@@ -534,7 +416,6 @@ public class TangofteroEntity extends SMOPAnimal
         return InteractionResult.SUCCESS;
     }
 
-    /** Vanilla's taming particle event ids, named so the call site reads. */
     private static final class EntityEvent {
         static final byte TAMING_FAILED = 6;
         static final byte TAMING_SUCCEEDED = 7;
@@ -563,10 +444,6 @@ public class TangofteroEntity extends SMOPAnimal
         return stack.is(Items.CHICKEN);
     }
 
-    /**
-     * No live offspring: mating flips {@code hasEgg} instead (see {@code GenericBreedGoal}) and the
-     * clutch hatches from the egg block.
-     */
     @Override
     public @Nullable net.minecraft.world.entity.AgeableMob getBreedOffspring(
             @NotNull ServerLevel level, @NotNull net.minecraft.world.entity.AgeableMob partner) {
@@ -623,7 +500,6 @@ public class TangofteroEntity extends SMOPAnimal
         return nearby.is(EntityTypeTags.UNDEAD);
     }
 
-    /** Empty: the undead check above covers everything this mob cares about. */
     @Override
     public @NotNull Set<EntityType<?>> getInterruptingEntityTypes() {
         return Set.of();

@@ -9,16 +9,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * Settles a gravid mob for a moment, then places its egg block.
- *
- * <p>It reports where the egg went through a {@code Consumer<BlockPos>} rather than to a guard goal
- * directly, so the laying goal knows nothing about guarding and {@link EggGoalRegistry} wires the two
- * together.
- */
 public class GenericLayEggGoal<T extends SMOPAnimal> extends Goal {
 
-    /** Ticks the mob stays put before the egg appears, and how long it keeps trying. */
     private static final int LAY_DELAY_TICKS = 40;
     private static final int GIVE_UP_TICKS = 60;
 

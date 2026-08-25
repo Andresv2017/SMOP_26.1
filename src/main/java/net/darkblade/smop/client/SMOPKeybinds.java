@@ -13,15 +13,6 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import org.lwjgl.glfw.GLFW;
 
-/**
- * The mount keybinds and the client tick that turns them into {@link RiderActionServerPacket}s.
- *
- * <p><b>Port note.</b> 26.1 replaced the keybind category string with a
- * {@link KeyMapping.Category} object built from an {@code Identifier}; its label key is derived as
- * {@code key.category.<namespace>.<path>}, hence {@code key.category.smop.main}. Registration of a
- * custom category goes through {@code RegisterKeyMappingsEvent#registerCategory} rather than the
- * now-deprecated static {@code Category.register}.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID, value = Dist.CLIENT)
 public final class SMOPKeybinds {
 
@@ -32,7 +23,6 @@ public final class SMOPKeybinds {
     public static final KeyMapping OPEN_INVENTORY = key("open_inventory", GLFW.GLFW_KEY_V);
     public static final KeyMapping DESCEND = key("descend", GLFW.GLFW_KEY_X);
 
-    /** Descend is held rather than tapped, so its edges are tracked instead of consumed as clicks. */
     private static boolean descendWasDown = false;
 
     private static KeyMapping key(String name, int keysym) {
@@ -64,11 +54,6 @@ public final class SMOPKeybinds {
         SMOPNetwork.INSTANCE.sendToServer(new RiderActionServerPacket(action));
     }
 
-    /**
-     * Mod-bus event. 26.1 infers which bus a handler belongs to from its event type, so this lives
-     * alongside the game-bus tick handler above instead of needing its own
-     * {@code bus = Bus.MOD} subscriber class — that attribute no longer exists.
-     */
     @SubscribeEvent
     static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.registerCategory(CATEGORY);

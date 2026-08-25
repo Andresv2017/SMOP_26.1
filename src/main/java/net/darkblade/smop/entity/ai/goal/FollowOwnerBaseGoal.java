@@ -8,16 +8,6 @@ import net.minecraft.world.entity.ai.navigation.PathNavigation;
 
 import java.util.EnumSet;
 
-/**
- * Tamed mob follows its owner, unless it has been told to stay put or to wander freely.
- *
- * <p>Distinct from vanilla's {@code FollowOwnerGoal} in that it respects SMOP's three-way order
- * state ({@code isOrderedToSit()} / {@code isWandering()} / following) and takes separate start and
- * stop distances, so a mob does not shuffle back and forth at the edge of its follow radius.
- *
- * <p>Teleporting uses {@code TamableAnimal#tryToTeleportToOwner()}, which is maintained by vanilla
- * and has a {@code canFlyToOwner()} hook, rather than a hand-rolled search.
- */
 public class FollowOwnerBaseGoal extends Goal {
 
     private final SMOPAnimal mob;
@@ -29,10 +19,6 @@ public class FollowOwnerBaseGoal extends Goal {
     private LivingEntity owner;
     private int timeToRecalcPath;
 
-    /**
-     * @param startDist how far the owner must get before the mob sets off
-     * @param stopDist  how close the mob settles for
-     */
     public FollowOwnerBaseGoal(SMOPAnimal mob, double speedModifier, float startDist, float stopDist) {
         this.mob = mob;
         this.speedModifier = speedModifier;
@@ -102,7 +88,6 @@ public class FollowOwnerBaseGoal extends Goal {
         }
     }
 
-    /** Call after swapping the mob's navigation instance (amphibious/flying mobs do this). */
     public void refreshNavigation() {
         this.navigation = this.mob.getNavigation();
     }

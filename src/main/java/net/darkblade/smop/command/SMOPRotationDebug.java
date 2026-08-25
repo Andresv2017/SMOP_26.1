@@ -19,41 +19,13 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/**
- * {@code /smop debug rotation [ticks]} — vuelca, tick a tick, los tres ángulos de los que depende
- * cómo gira el Grand Tyrant, y los huecos entre ellos.
- *
- * <p><b>Por qué hacen falta los tres y no basta con mirarlo.</b> Un mob tiene tres yaws que casi
- * nunca coinciden y sólo uno se dibuja:
- *
- * <ul>
- *   <li>{@code rumbo} ({@code getYRot}) — a dónde ha decidido ir. No se dibuja en ninguna parte.</li>
- *   <li>{@code cuerpo} ({@code yBodyRot}) — <b>el que se dibuja</b>. En este bicho persigue al rumbo
- *       ande o esté parado, que es lo que {@code GTBodyRotation} añade al control de la librería.</li>
- *   <li>{@code cabeza} ({@code yHeadRot}) — sólo se separa del cuerpo si algo la mueve, y en este
- *       bicho eso es únicamente el {@code setLookAt} de la persecución.</li>
- * </ul>
- *
- * <p>La columna que importa es <b>{@code hueco}</b>: rumbo menos cuerpo. Es la señal entera que
- * alimenta la cascada de {@code GTSpineTurn}, y si vale cero no hay nada que propagar por muy bien
- * afinada que esté la cadena de muelles. En reposo debe rondar el cero; girando tiene que abrirse y
- * quedarse abierto todo el viraje, y su valor estacionario es
- * {@code velocidad de giro / bodyLagMoving} — o sea que si no se abre, el mando es uno de esos dos y
- * no la cadena.
- *
- * <p>{@code giro} es cuánto se movió el rumbo en ESTE tick, para comprobar contra {@code TURN_SPEED}
- * si de verdad está girando a la velocidad que dice la constante.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPRotationDebug {
 
-    /** Radio en el que se buscan Grand Tyrant alrededor de quien mira. */
     private static final double RADIUS = 48.0D;
 
-    /** Por defecto, un vuelco por tick: girar es un transitorio y muestrear de tarde en tarde lo pierde. */
     private static final int DEFAULT_EVERY = 1;
 
-    /** Tope, para no dejarse un reloj corriendo toda la sesión. */
     private static final int MAX_SECONDS = 60;
 
     @Nullable
@@ -61,7 +33,6 @@ public final class SMOPRotationDebug {
     private static int every = DEFAULT_EVERY;
     private static int ticksLeft;
     private static int counter;
-    /** Rumbo del tick anterior, por entidad, para poder dar la velocidad de giro real. */
     private static int lastEntityId = -1;
     private static float lastHeading;
 

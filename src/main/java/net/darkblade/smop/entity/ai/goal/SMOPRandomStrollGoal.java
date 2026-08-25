@@ -5,13 +5,6 @@ import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 
 import java.util.function.BooleanSupplier;
 
-/**
- * {@link RandomStrollGoal} with one extra caller-supplied condition — perched on a player's head,
- * being ridden, minding a nest, and so on.
- *
- * <p>Sleep is <em>not</em> among those conditions: {@code SleepGoal} holds MOVE, so the selector
- * already keeps this goal from running while the mob is asleep.
- */
 public class SMOPRandomStrollGoal extends RandomStrollGoal {
 
     private final BooleanSupplier canRun;

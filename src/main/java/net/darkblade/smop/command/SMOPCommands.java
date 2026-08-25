@@ -19,16 +19,6 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * {@code /smop spawn baby <animal> [pos]} — one literal per SMOP animal, each spawning an adult of
- * that type aged down to freshly-hatched. Named and listed explicitly (no generic "spawn baby
- * &lt;entity&gt;" over the whole entity registry): the point is a fast, discoverable shortcut for the
- * animals this mod actually adds, in the same freshly-hatched state the manual test checklists have
- * been reaching by hand via {@code /summon smop:kriftognathus ~ ~ ~ {Age:-24000}}.
- *
- * <p>Registered on the SERVER dispatcher, gated to operators like vanilla {@code /summon} — this
- * spawns a real entity into the world, unlike {@code SMOPClientCommands}' purely-local tuners.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPCommands {
 
@@ -51,7 +41,6 @@ public final class SMOPCommands {
                 .then(SMOPRotationDebug.build()));
     }
 
-    /** One {@code <name> [pos]} literal, spawning {@code type} as a baby at the given or current position. */
     private static LiteralArgumentBuilder<CommandSourceStack> spawnBabyLiteral(String name, EntityType<?> type) {
         return Commands.literal(name)
                 .executes(ctx -> spawnBaby(ctx.getSource(), type, ctx.getSource().getPosition()))

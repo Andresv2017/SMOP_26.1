@@ -14,27 +14,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.function.Predicate;
 
-/**
- * Nest guarding: keep station near an egg, optionally attack whatever comes close, and react when
- * the nest is destroyed.
- *
- * <p>Subclasses decide <em>which</em> egg is being guarded — the one this mob laid
- * ({@link ProtectOwnEggGoal}) or the nearest one it can find ({@link ProtectNearestEggGoal}).
- *
- * <p>Tamed mobs skip this entirely: a pet following its owner around should not anchor itself to a
- * nest it happens to walk past.
- */
 public abstract class ProtectEggBaseGoal extends Goal {
 
-    /** How the mother answers her nest being destroyed. */
     public enum EggBreakReaction {
-        /** Bolt away from the nest site. */
         FLEE,
-        /** Carry on as if nothing happened. */
         IGNORE
     }
 
-    /** Gap between threat sweeps, and between re-targeting after picking a victim. */
     private static final int THREAT_SCAN_INTERVAL = 20;
     private static final int RETARGET_COOLDOWN = 40;
 
@@ -123,7 +109,6 @@ public abstract class ProtectEggBaseGoal extends Goal {
         }
     }
 
-    /** Called from the block-break event for every guarding mob in range. */
     public void notifyEggBroken(BlockPos brokenPos) {
         if (this.targetEggPos == null || !this.targetEggPos.equals(brokenPos)) {
             return;

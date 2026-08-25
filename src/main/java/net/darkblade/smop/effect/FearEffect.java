@@ -6,14 +6,6 @@ import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 
-/**
- * The Hell Hippo's intimidation debuff: roughly Weakness I plus Slowness I on whoever it scares.
- *
- * <p><b>Port note.</b> 26.1 identifies an effect's attribute modifiers by {@code Identifier}
- * instead of a hardcoded UUID string, and {@code Operation.ADDITION}/{@code MULTIPLY_TOTAL} were
- * renamed to {@code ADD_VALUE}/{@code ADD_MULTIPLIED_TOTAL}. The per-tick hook
- * {@code isDurationEffectTick} is now {@code shouldApplyEffectTickThisTick}.
- */
 public class FearEffect extends MobEffect {
 
     public FearEffect() {

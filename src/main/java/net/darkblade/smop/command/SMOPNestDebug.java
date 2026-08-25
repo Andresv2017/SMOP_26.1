@@ -37,27 +37,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.List;
 
-/**
- * {@code /smop debug nest} — why a pair is not breeding, or a gravid animal is not laying.
- *
- * <p><b>Why this is separate from {@code /smop debug swim}.</b> That command follows one chain, the
- * six links between a goal firing and a swimmer actually moving, and it is good at it. Breeding is a
- * different chain that happens to run on the same animals: two mobs have to agree to pair, one of
- * them ends up carrying the egg, that one has to walk somewhere legal, arrive, and stand still long
- * enough. Every link has failed at least once during 1b, and each time the symptom was the same
- * nothing-happens, which is precisely the situation a dump exists for.
- *
- * <p><b>It reports verdicts from the mobs themselves.</b> {@code canMate} is called on the actual
- * pair, and whether a block is somewhere to nest is asked of the species through
- * {@link SMOPAnimal#isNestSiteAt}; the raw facts printed beside them (in love, in water, air, sky,
- * ground) are evidence, not a second copy of the rule that could drift from the first.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPNestDebug {
 
     private static final double RADIUS = 48.0D;
 
-    /** Box swept when counting somewhere to nest, matching {@code SeekNestSiteGoal}. */
     private static final int SCAN_RADIUS = 16;
     private static final int SCAN_HEIGHT = 6;
 
@@ -77,16 +61,6 @@ public final class SMOPNestDebug {
     private static final Logger LOGGER = LoggerFactory.getLogger("smop-nest");
     private static final int DEFAULT_WATCH_SECONDS = 180;
 
-    /**
-     * One animal's last known position along the chain. Compared each tick; only <b>changes</b> are
-     * reported.
-     *
-     * <p><b>Why edge-triggered rather than sampled.</b> The whole reason the snapshot form of this
-     * command kept coming up short is that the interesting moments are transitions — love taken,
-     * partner found, egg handed over, destination chosen, arrival, laying — and every one of them is
-     * over in a tick or two. Running the dump by hand catches the state between transitions, which is
-     * exactly the part that looks like nothing happening. This prints the moments themselves.
-     */
     private record Stage(boolean inLove, boolean hasEgg, boolean breeding,
                          boolean seeking, boolean arrived, @Nullable BlockPos target) {}
 
@@ -136,7 +110,6 @@ public final class SMOPNestDebug {
         }
     }
 
-    /** Compares this animal against its last stage and reports whatever moved. */
     private static void track(SMOPAnimal mob) {
         SeekNestSiteGoal seek = findSeekGoal(mob);
         Stage now = new Stage(
@@ -201,7 +174,6 @@ public final class SMOPNestDebug {
         }
     }
 
-    /** The egg block closest to the animal, searched only where one could plausibly have just gone. */
     @Nullable
     private static BlockPos findEggNear(SMOPAnimal mob) {
         BlockPos here = mob.blockPosition();
@@ -377,7 +349,6 @@ public final class SMOPNestDebug {
         return out;
     }
 
-    /** Nearest other animal of exactly the same species. */
     @Nullable
     private static SMOPAnimal nearestOfSameSpecies(SMOPAnimal mob, List<SMOPAnimal> nearby) {
         return nearby.stream()
@@ -405,7 +376,6 @@ public final class SMOPNestDebug {
         return false;
     }
 
-    /** {@code [legal sites, of which at least eight blocks off]} in the goal's own search box. */
     private static int[] countSites(SMOPAnimal mob, BlockPos origin) {
         int legal = 0;
         int distant = 0;
@@ -428,7 +398,6 @@ public final class SMOPNestDebug {
         return id.substring(id.lastIndexOf('.') + 1);
     }
 
-    /** Last segment of a block's translation key, so the line stays readable. */
     private static String name(String descriptionId) {
         return descriptionId.substring(descriptionId.lastIndexOf('.') + 1);
     }

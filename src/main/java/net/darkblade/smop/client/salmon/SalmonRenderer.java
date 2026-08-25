@@ -11,21 +11,11 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Renders the salmon, male or female.
- *
- * <p>Plain {@link MobRenderer} rather than {@code AgeableMobRenderer}: fry use the same skeleton as
- * adults, just smaller, so there is no second model to swap in — only the scale below. And not
- * DeluxeLib's {@code CustomMobRenderer}, which pins the render state to {@code DeluxeEntityRenderState}
- * while this mob needs its own subclass for the sex. The two things that base would have given —
- * capturing the animator onto the state and killing the vanilla death flip — are the few lines here.
- */
 public class SalmonRenderer extends MobRenderer<SalmonEntity, SalmonRenderState, SalmonModel> {
 
     private static final Identifier MALE = SMOP.id("textures/entity/salmon/salmon_male.png");
     private static final Identifier FEMALE = SMOP.id("textures/entity/salmon/salmon_female.png");
 
-    /** Fry are the adult model at a third scale. */
     private static final float BABY_SCALE = 0.3F;
 
     public SalmonRenderer(EntityRendererProvider.Context context) {
@@ -49,13 +39,6 @@ public class SalmonRenderer extends MobRenderer<SalmonEntity, SalmonRenderState,
         state.swimRoll = Mth.lerp(partialTick, entity.prevSwimRoll, entity.swimRoll);
     }
 
-    /**
-     * Body tilt on top of vanilla's rotations.
-     *
-     * <p>Applied to the whole model here rather than inside the {@code Rig}, which is what keeps it
-     * from fighting the head's look-at: this is the trajectory, the rig's own bones are the pose, and
-     * they compose instead of competing. Same two lines the Nirasmosaurus and the Kriftognathus use.
-     */
     @Override
     protected void setupRotations(@NotNull SalmonRenderState state, @NotNull PoseStack poseStack,
                                   float bodyRot, float entityScale) {
@@ -64,10 +47,6 @@ public class SalmonRenderer extends MobRenderer<SalmonEntity, SalmonRenderState,
         poseStack.mulPose(Axis.ZP.rotationDegrees(-state.swimRoll));
     }
 
-    /**
-     * Scaling goes through the render state: the {@code render} override no longer receives the
-     * entity.
-     */
     @Override
     protected float getShadowRadius(@NotNull SalmonRenderState state) {
         return state.isBaby ? super.getShadowRadius(state) * BABY_SCALE : super.getShadowRadius(state);
@@ -81,7 +60,6 @@ public class SalmonRenderer extends MobRenderer<SalmonEntity, SalmonRenderState,
         super.scale(state, poseStack);
     }
 
-    /** Off, so the authored water/land death clips are not fought by vanilla's 90° corpse flop. */
     @Override
     protected float getFlipDegrees() {
         return 0.0F;

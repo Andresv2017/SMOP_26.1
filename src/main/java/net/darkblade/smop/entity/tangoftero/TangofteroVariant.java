@@ -1,6 +1,5 @@
 package net.darkblade.smop.entity.tangoftero;
 
-/** Coat colours a Tangoftero can be born with. The id is what gets stored and synced. */
 public enum TangofteroVariant {
 
     BLACK,

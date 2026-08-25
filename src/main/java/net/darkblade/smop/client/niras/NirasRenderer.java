@@ -12,13 +12,6 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Renders the Nirasmosaurus: adult or calf, male or female.
- *
- * <p>{@link AgeableMobRenderer} handles the adult/calf model swap, which matters more here than
- * usual — the two meshes have different skeletons (the calf has no chest corals and no saliva
- * strands) and a clip baked against the wrong one throws rather than degrading.
- */
 public class NirasRenderer
         extends AgeableMobRenderer<NirasmosaurusEntity, NirasRenderState, EntityModel<? super NirasRenderState>> {
 
@@ -52,13 +45,6 @@ public class NirasRenderer
         state.swimRoll = Mth.lerp(partialTick, entity.prevSwimRoll, entity.swimRoll);
     }
 
-    /**
-     * Body tilt on top of vanilla's rotations.
-     *
-     * <p>Applied to the whole model here rather than inside the {@code Rig}, which is what keeps it
-     * from fighting the neck's look-at: this is the trajectory, the rig's {@code lookAt} is the head,
-     * and they compose instead of competing. Same two lines the Kriftognathus uses for flight.
-     */
     @Override
     protected void setupRotations(@NotNull NirasRenderState state, @NotNull PoseStack poseStack,
                                   float bodyRot, float entityScale) {
@@ -67,20 +53,6 @@ public class NirasRenderer
         poseStack.mulPose(Axis.ZP.rotationDegrees(-state.swimRoll));
     }
 
-    /**
-     * Off, so the authored death clips own the collapse.
-     *
-     * <p>Vanilla rolls a dying mob itself: {@code LivingEntityRenderer#setupRotations} multiplies the
-     * pose stack by {@code Axis.ZP.rotationDegrees(fall * getFlipDegrees())}, and the default is 90°.
-     * Both death clips here turn the body about that same axis — the land one lists it 22.5°, the
-     * water one capsizes it 110° — so with vanilla's roll live they compose: 22.5 + 90 comes out at
-     * about 112, which is within two degrees of the water clip's own 110. That is why dying on dry
-     * sand looked exactly like drowning, and why no amount of correcting the CHOICE fixed it — the
-     * right clip was playing all along, with vanilla's tip-over stacked on top.
-     *
-     * <p>The Hell Hippo carries the same override for the same reason; its clip turns −82.5° and read
-     * as a corpse still standing.
-     */
     @Override
     protected float getFlipDegrees() {
         return 0.0F;

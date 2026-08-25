@@ -10,57 +10,16 @@ import org.jetbrains.annotations.NotNull;
 import java.util.EnumSet;
 import java.util.function.BooleanSupplier;
 
-/**
- * Drags an amphibious hunter out of the water after a target that has left it.
- *
- * <p><b>Why this cannot be a pathfinding problem.</b> A mob that swims and walks carries one
- * navigator for each medium, and when its quarry climbs onto the beach <em>neither of them can
- * produce that route</em> — this was measured with {@code /smop debug bite watch} rather than
- * reasoned about:
- *
- * <ul>
- *   <li>The swimming navigator's node evaluator only ever emits nodes in water. Asked for a target
- *       on dry land it returns the start node and nothing else: {@code path=1 nodes, canReach=false}.
- *   <li>The ground navigator never even runs the search.
- *       {@code GroundPathNavigation#canUpdatePath()} is {@code onGround() || isInLiquid() ||
- *       isPassenger()}, and {@code PathNavigation#createPath} bails out with {@code null} before
- *       pathfinding when that is false. An animal floating at the surface is none of the three.
- * </ul>
- *
- * <p>So the reading on the log was an animal sitting at <b>exactly</b> the same distance, to the
- * centimetre, for twenty seconds, flipping medium every couple of seconds as it bobbed — because the
- * buoyancy trim and {@code travel}'s counter-trim cancel around the waterline. Nothing was wrong with
- * the route. There was no behaviour that beaches the animal, and no amount of tuning maluses,
- * re-issuing paths or swapping navigators can invent one.
- *
- * <p><b>So it steers, and does not path.</b> Same answer the Kriftognathus reached for its aerial
- * chase — discard the path and drive the velocity straight at the quarry — for the same underlying
- * reason: the pathfinder is the wrong tool for a mob crossing a medium it has no nodes in. Once the
- * animal is on solid ground the goal ends and the ordinary melee chase, which now has a ground
- * navigator that will happily path, takes the last few blocks.
- */
 public class HaulOutGoal extends Goal {
 
-    /** Blocks per tick aimed for while hauling out. */
     private static final double SPEED = 0.22D;
-    /** How fast the velocity blends toward the desired heading. High: this is a lunge, not a cruise. */
     private static final double ACCEL = 0.30D;
-    /**
-     * Upward push held while still in the water.
-     *
-     * <p>Without it the animal drives horizontally into the face of the beach and grinds there: the
-     * shoreline is a step, and a swimmer with no vertical component has nothing to climb it with.
-     */
     private static final double RISE = 0.06D;
-    /** Extra lift while actually pressed against the shore, so a steeper lip still gets climbed. */
     private static final double CLIMB = 0.28D;
 
-    /** Body yaw degrees per tick while hauling out — free of the swim control's stately cap. */
     private static final float TURN_SPEED = 12.0F;
 
-    /** Gives up after this long, so a mob under an overhang does not shove at it forever. */
     private static final int MAX_TICKS = 120;
-    /** And then leaves it alone for this long before trying again. */
     private static final int COOLDOWN_TICKS = 100;
 
     private final Mob mob;
@@ -70,10 +29,6 @@ public class HaulOutGoal extends Goal {
     private int ticksRunning;
     private int cooldown;
 
-    /**
-     * @param maxRange how far ashore a target may be and still be worth beaching for
-     * @param allowed  species gate — age, sleep, tameness; whatever should stop it happening
-     */
     public HaulOutGoal(@NotNull Mob mob, double maxRange, @NotNull BooleanSupplier allowed) {
         this.mob = mob;
         this.maxRange = maxRange;

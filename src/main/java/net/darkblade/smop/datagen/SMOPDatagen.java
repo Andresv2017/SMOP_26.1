@@ -31,26 +31,14 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.CompletableFuture;
 
-/**
- * Data generation entry points.
- *
- * <p>Display names are generated rather than hand-written so they cannot drift out of sync with the
- * registry. Anything whose auto-derived name would be wrong is overridden explicitly below;
- * everything else falls out of {@code autoItemNames} ({@code krifto_meat -> "Krifto Meat"}).
- *
- * <p>{@code GatherDataEvent} is abstract — listeners go on its concrete {@code Client}/{@code Server}
- * subclasses.
- */
 public final class SMOPDatagen {
 
-    /** Wired from {@code SMOP}'s constructor. */
     public static void gatherClientData(GatherDataEvent.Client event) {
         DataGenerator generator = event.getGenerator();
         PackOutput output = generator.getPackOutput();
         generator.addProvider(true, new Lang(output));
     }
 
-    /** Wired from {@code SMOP}'s constructor. */
     public static void gatherServerData(GatherDataEvent.Server event) {
         DataGenerator generator = event.getGenerator();
         PackOutput output = generator.getPackOutput();
@@ -150,15 +138,8 @@ public final class SMOPDatagen {
         }
     }
 
-    /**
-     * <p><b>Every {@code save} names its recipe id explicitly</b> instead of taking the default derived
-     * from the result, so a world that already knows these recipes keeps knowing them and the unlock
-     * advancements keep their paths. Two would break outright without it: the salmon pair resolves to
-     * {@code minecraft:cooked_salmon}, which is vanilla's own id and would collide.
-     */
     private static final class Recipe extends RecipeProvider {
 
-        /** What vanilla pays for any cut of meat. */
         private static final float XP = 0.35F;
 
         private static final int SMELT_TIME = 200;
@@ -239,13 +220,6 @@ public final class SMOPDatagen {
                     .save(this.output, SMOP.MOD_ID + ":hellhippo_armor_smithing");
         }
 
-        /**
-         * Furnace, smoker and campfire for one ingredient.
-         *
-         * <p>Not {@code RecipeProvider#simpleCookingRecipe}, which looks like the same thing: that one
-         * derives its id from the result and would hand the salmon pair vanilla's
-         * {@code minecraft:cooked_salmon}.
-         */
         private void cooking(ItemLike base, ItemLike result, String idPrefix) {
             String unlock = getHasName(base);
 

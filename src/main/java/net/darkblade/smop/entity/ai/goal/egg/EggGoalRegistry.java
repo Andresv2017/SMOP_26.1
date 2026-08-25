@@ -8,20 +8,8 @@ import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-/**
- * Adds the lay-egg and guard-egg goals as a matched pair, so a mob's {@code registerGoals()} states
- * its nesting behaviour in one call instead of wiring two interdependent goals by hand.
- *
- * <p>The guard goal always sits one priority above the laying goal: a mother defends the nest she
- * already has before going looking for somewhere to lay the next one.
- */
 public final class EggGoalRegistry {
 
-    /**
-     * The mob guards the specific nest it laid. Use for solitary nesters.
-     *
-     * @param basePriority priority of the guard goal; laying goes at {@code basePriority + 1}
-     */
     public static <T extends SMOPAnimal> void registerWithOwnGoal(
             T mob,
             Supplier<? extends Block> eggBlock,
@@ -40,10 +28,6 @@ public final class EggGoalRegistry {
         mob.goalSelector.addGoal(basePriority + 1, new GenericLayEggGoal<>(mob, eggBlock, guard::assignEgg));
     }
 
-    /**
-     * The mob guards whichever matching nest is nearest. Use for colonial nesters, where any adult
-     * minds any clutch — no assignment needed, so laying reports to nobody.
-     */
     public static <T extends SMOPAnimal> void registerWithNearestGoal(
             T mob,
             Supplier<? extends Block> eggBlock,

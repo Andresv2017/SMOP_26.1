@@ -23,14 +23,6 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-/**
- * Item registry and the mod's creative tab.
- *
- * <p>Only the plain drop/food items exist so far; weapons, armor, spawn eggs and block items are
- * added as their mobs and blocks land (see PORT_ANALYSIS.md for the phase order). The tab's
- * {@code displayItems} lambda is the natural place to extend, since it runs long after every
- * register has finished loading.
- */
 public final class SMOPItems {
 
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(SMOP.MOD_ID);
@@ -78,10 +70,6 @@ public final class SMOPItems {
     public static final DeferredItem<Item> COOKED_TANGO_LEG =
             ITEMS.registerSimpleItem("cooked_tango_leg", () -> food(SMOPFoods.COOKED_TANGO_LEG));
 
-    /**
-     * Returning the empty bowl after eating is the {@code usingConvertsTo} property, not a
-     * {@code BowlFoodItem} subclass.
-     */
     public static final DeferredItem<Item> KRIFTO_STEW =
             ITEMS.registerSimpleItem("krifto_stew",
                     () -> food(SMOPFoods.KRIFTO_STEW).stacksTo(1).usingConvertsTo(Items.BOWL));
@@ -102,25 +90,6 @@ public final class SMOPItems {
 
     // ───────────────────────────────────────────────────── DIG DROPS ─────
 
-    /**
-     * What a salmon turns up per substrate, picked at random from the matching list — see
-     * {@code SalmonDigGoal}. Plain item lists rather than loot tables because the salmon is not
-     * breaking the block as a player would: the drop is what it <em>found</em> buried, not what the
-     * block itself yields.
-     */
-    /**
-     * The rare find: what was buried long before anyone was around to bury it.
-     *
-     * <p>Rolled <em>before</em> the substrate pool rather than merged into it — see
-     * {@code SalmonDigGoal#dropFor}. Merging would have been the smaller edit and the wrong one:
-     * the pools hold two to four items each, so dropping a dozen sherds in would have made the
-     * relic the ordinary result and the stick the rarity, which is backwards.
-     *
-     * <p>Vanilla's sherds are deliberate rather than decorative. Sand and gravel are the two
-     * substrates its own archaeology uses, so a fish turning them over and surfacing pottery reads
-     * as the same act the player already knows from suspicious blocks — and {@code ANGLER} in
-     * particular is the sherd about fishing. Bone covers what pottery does not.
-     */
     public static final java.util.List<Item> RELIC_DIG_DROPS = java.util.List.of(
             Items.ANGLER_POTTERY_SHERD,
             Items.SHELTER_POTTERY_SHERD,
@@ -139,19 +108,6 @@ public final class SMOPItems {
 
     // ───────────────────────────────────────────────────── ARMOUR ─────
 
-    /**
-     * Barding for a saddled Hell Hippo. Worn in {@link EquipmentSlot#BODY}, like horse armour.
-     *
-     * <p><b>The +5 armour is a data component, not code.</b> The modifier rides on the item and vanilla
-     * applies and reverts it with the equipment, so the number below is the whole of it.
-     *
-     * <p>{@code setAllowedEntities} restricts it to this one mob, which is also what stops it being
-     * strapped to a horse. Resolving {@code SMOPEntities} inside the properties lambda is safe for the
-     * same reason the spawn eggs below can do it: the lambda runs while the item registry is being
-     * filled, by which point entity types exist.
-     *
-     * <p>{@code setDamageOnHurt(false)} matches horse armour — barding absorbs without wearing out.
-     */
     public static final DeferredItem<Item> HELL_HIPPO_ARMOR =
             ITEMS.registerItem("hellhippo_armor", props -> new Item(props
                     .stacksTo(1)
@@ -169,13 +125,6 @@ public final class SMOPItems {
 
     // ───────────────────────────────────────────────────── WEAPONS ─────
 
-    /**
-     * A throwable javelin, and the stack size is the balance lever.
-     *
-     * <p>Four is a handful: enough that the spear is ammunition rather than a single precious trident,
-     * few enough that you notice spending one. A stack of sixteen makes throwing one weightless. The
-     * melee numbers say the rest — a poor sword and a good javelin, and the slow swing is what says so.
-     */
     public static final DeferredItem<Item> NIRAS_SPEAR =
             ITEMS.registerItem("niras_spear", props -> new NirasSpearItem(props
                     .stacksTo(4)
@@ -192,20 +141,11 @@ public final class SMOPItems {
 
     // ───────────────────────────────────────────────────── AMMUNITION ─────
 
-    /**
-     * Fletched with a Tangoftero feather. Loadable by any bow or crossbow through the
-     * {@code minecraft:arrows} item tag, which is where that permission lives — the class only
-     * decides what flies.
-     */
     public static final DeferredItem<Item> TANGO_ARROW =
             ITEMS.registerItem("tango_arrow", TangoArrowItem::new);
 
     // ───────────────────────────────────────────────────── SPAWN EGGS ─────
 
-    /**
-     * {@link SpawnEggItem} takes only properties — which entity it spawns is a data component, applied
-     * here via {@code Item.Properties#spawnEgg}, and the colours come from the entity's own definition.
-     */
     public static final DeferredItem<SpawnEggItem> TANGOFTERO_SPAWN_EGG =
             ITEMS.registerItem("tangoftero_spawn_egg",
                     props -> new SpawnEggItem(props.spawnEgg(SMOPEntities.TANGOFTERO.get())));

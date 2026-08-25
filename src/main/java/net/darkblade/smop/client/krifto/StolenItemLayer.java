@@ -9,26 +9,6 @@ import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Draws whatever a wild Krifto is carrying off after a heist (see {@code StealFromPlayerGoal}),
- * gripped between the hind legs.
- *
- * <p>Adult-only: the model type parameter is the abstract {@code EntityModel<? super
- * KriftoRenderState>} {@code KriftognathusRenderer} shares between its adult and chick models (an
- * {@code AgeableMobRenderer} requirement), so which concrete model {@link #getParentModel()} returns
- * at any given frame depends on the entity's age. The {@code instanceof} below is that check, not a
- * defensive afterthought — a chick model has no {@code gBack_legs}-equivalent bone to attach to. It
- * never actually has anything to draw regardless, since {@code StealFromPlayerGoal} never engages a
- * baby and {@code state.stolenItem} is only ever populated for an adult.
- *
- * <p>The pose walks {@link KriftognathusModel#piglug} → {@link KriftognathusModel#legs} →
- * {@link KriftognathusModel#backLegs} one bone at a time via
- * {@link net.minecraft.client.model.geom.ModelPart#translateAndRotate}. A single translate by
- * {@code backLegs}'s own offset is not enough: {@code gBack_legs} sits three levels below the model
- * root, and {@code gPiglug} alone carries most of this mob's locomotion — its own offset and rotation
- * move every frame the mob walks, flies, or dances through {@code tamed}. Skipping the walk and
- * translating by {@code backLegs} alone would only be correct at the rest pose.
- */
 public class StolenItemLayer extends RenderLayer<KriftoRenderState, EntityModel<? super KriftoRenderState>> {
 
     public StolenItemLayer(@NotNull RenderLayerParent<KriftoRenderState, EntityModel<? super KriftoRenderState>> renderer) {

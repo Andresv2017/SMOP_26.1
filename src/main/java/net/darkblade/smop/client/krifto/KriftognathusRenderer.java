@@ -18,15 +18,6 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemDisplayContext;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Renders the Kriftognathus: adult or chick, male or female, in the coat of the biome it hatched in.
- *
- * <p>{@link AgeableMobRenderer} rather than DeluxeLib's {@code CustomMobRenderer} for the same two
- * reasons as the Tangoftero: it handles the adult/chick model swap for free, and it is generic over
- * the render state, which {@code CustomMobRenderer} pins to {@code DeluxeEntityRenderState} while
- * this mob needs its own subclass. The two things that base would have given — capturing the animator
- * onto the state and killing the vanilla death flip — are the few lines below.
- */
 public class KriftognathusRenderer
         extends AgeableMobRenderer<KriftognathusEntity, KriftoRenderState, EntityModel<? super KriftoRenderState>>
         implements PerchPoseHandler {
@@ -72,16 +63,6 @@ public class KriftognathusRenderer
                 ItemDisplayContext.GROUND, entity);
     }
 
-    /**
-     * Nose-up when climbing, nose-down when diving, banking into turns. Rotating the pose stack here
-     * rather than a bone keeps the lean independent of the keyframes, so the authored flight clips
-     * never fight the physics tilt.
-     *
-     * <p>These are the four lines of DeluxeLib's {@code FlyingMobRenderer}, copied rather than
-     * inherited: that base is pinned to {@code AbstractFlyingEntity} and to a bare
-     * {@code DeluxeEntityRenderState}, and this renderer needs neither — it needs
-     * {@link AgeableMobRenderer} for the chick swap and a render state of its own for the coat.
-     */
     @Override
     protected void setupRotations(@NotNull KriftoRenderState state, @NotNull PoseStack poseStack,
                                   float bodyRot, float entityScale) {
@@ -90,16 +71,11 @@ public class KriftognathusRenderer
         poseStack.mulPose(Axis.ZP.rotationDegrees(-state.flightRoll));
     }
 
-    /** Off, so the authored death clip is not fought by vanilla's 90° corpse flop. */
     @Override
     protected float getFlipDegrees() {
         return 0.0F;
     }
 
-    /**
-     * Coat by hatching biome. Matched on substrings of the biome path, so every jungle/badlands
-     * variant lands on the right coat without listing them one by one — chicks are the same either way.
-     */
     @Override
     public @NotNull Identifier getTextureLocation(@NotNull KriftoRenderState state) {
         if (state.isBaby) {

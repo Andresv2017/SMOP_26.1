@@ -25,22 +25,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * {@code /smop debug death} — dumps, at the instant a SMOP animal dies, which death variant the
- * animator chose and every fact that went into the choice.
- *
- * <p><b>Why it has to be an event and not a command you type.</b> The choice happens once, inside
- * {@code MobAnimator#startDeathAnimation}, on the tick the mob dies: it filters the registered
- * variants by their play conditions and picks among those that qualify. By the time a player can
- * type anything the decision is made, the inputs have moved on, and all that is left is a corpse
- * playing something. This hooks the same event the animator does, one priority lower, so it reports
- * the outcome rather than guessing at it.
- *
- * <p>The line that matters most is {@code chosen}. If it reads {@code NONE}, no clip is playing at
- * all and what is on screen is vanilla's own death tip-over — a roll of about ninety degrees around
- * Z, which on this rig is very nearly the water death's hundred and ten and is the reason "the wrong
- * animation played" and "no animation played" look the same from a distance.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPDeathDebug {
 
@@ -72,11 +56,6 @@ public final class SMOPDeathDebug {
         return 1;
     }
 
-    /**
-     * Lowest priority on purpose: {@code MobAnimator$Events.onLivingDeath} is subscribed to the same
-     * event at the default priority and is what actually starts the clip, so running after it is the
-     * difference between reporting the decision and racing it.
-     */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onLivingDeath(@NotNull LivingDeathEvent event) {
         if (watcher == null || !(event.getEntity() instanceof SMOPAnimal mob) || mob.level().isClientSide()) {

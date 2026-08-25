@@ -9,13 +9,6 @@ import net.darkblade.smop.client.gt.GroundCrackFx;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Servidor → cliente: el Grand Tyrant acaba de pisar aquí.
- *
- * <p>Viaja el centro y el radio, no la lista de bloques: cuáles se agrietan lo decide el cliente. Es
- * un efecto cosmético y nadie tiene que ver exactamente los mismos, así que mandar hasta 48
- * posiciones tres veces por pisotón sería pagar ancho de banda por un acuerdo que no hace falta.
- */
 @PacketSide(side = Side.CLIENT)
 public final class StompCrackFxClientPacket extends AbstractNetworkPacket<StompCrackFxClientPacket> {
 
@@ -24,7 +17,6 @@ public final class StompCrackFxClientPacket extends AbstractNetworkPacket<StompC
     private int cz;
     private int radius;
 
-    /** Lo exige el decodificador; los campos los rellena {@link #read}. */
     public StompCrackFxClientPacket() {}
 
     public StompCrackFxClientPacket(@NotNull BlockPos center, int radius) {

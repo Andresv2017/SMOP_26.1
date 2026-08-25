@@ -15,14 +15,6 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import org.slf4j.Logger;
 
-/**
- * Main mod entrypoint (NeoForge 26.1).
- *
- * <p>The mod event bus and {@link ModContainer} are injected into the constructor, and client-only
- * wiring lives in {@link SMOPClient}, a {@code Dist.CLIENT}-gated {@code @Mod} class.
- *
- * <p>Registries are attached here as each one is ported; see PORT_ANALYSIS.md for the phase order.
- */
 @Mod(SMOP.MOD_ID)
 public class SMOP {
 
@@ -51,10 +43,6 @@ public class SMOP {
         modEventBus.addListener(SMOPDatagen::gatherServerData);
     }
 
-    /**
-     * Shorthand for a {@code smop:}-namespaced id. 26.1 renamed {@code ResourceLocation} to
-     * {@link Identifier} and its constructor is not public, hence the factory call.
-     */
     public static Identifier id(String path) {
         return Identifier.fromNamespaceAndPath(MOD_ID, path);
     }

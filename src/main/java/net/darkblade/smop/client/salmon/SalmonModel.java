@@ -12,18 +12,6 @@ import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * The salmon. Geometry is the untouched Blockbench export.
- *
- * <p>The {@link Rig} covers both halves of the pose: the keyframe blend plays whatever the
- * {@code MobAnimator} says is current, and a look-at chain distributes the turn down
- * head → body → tail rather than deriving those angles by hand.
- *
- * <p>Distributing it as a chain rather than dumping it on the head is what makes a fish read as a
- * fish: the body leads into the turn and the tail trails it. The old code did this with three
- * hand-tuned coefficients (0.35 / 0.20 / -0.45); here they are the chain's shares, and the tail's
- * share is negative for the same reason it was there — it sweeps opposite to the head.
- */
 public class SalmonModel extends EntityModel<DeluxeEntityRenderState> {
 
     public static final ModelLayerLocation LAYER_LOCATION =

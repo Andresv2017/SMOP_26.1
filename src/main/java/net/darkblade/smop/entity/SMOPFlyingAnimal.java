@@ -28,53 +28,14 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumSet;
 
-/**
- * Shared base for SMOP's fliers: a mob that walks and flies, with a real flight lifecycle rather
- * than a binary switch.
- *
- * <h3>The cycle</h3>
- * <pre>
- *   GROUNDED ──(groundRestTimer hits 0)──▶ TakeoffGoal
- *     beginTakeoff()   → FLYING, TAKING_OFF, flight nav, no gravity, onTakeoffBegin()
- *     completeTakeoff()→ TAKING_OFF off, onTakeoffComplete()
- *   SOARING ──(flightDurationTimer ≥ maxFlightTicks)──▶ powered descent
- *     seekingGround    → onSeekGroundBegin()   (the stoop)
- *   ──(within getLandingApproachAltitude())──▶ LandingGoal
- *     beginLanding()   → LANDING, onLandingBegin()
- *     completeLanding()→ grounded, gravity back, rest timer reset, onLandingComplete()
- * </pre>
- *
- * <p><b>Why this is a copy of the system and not a subclass.</b> DeluxeLib's
- * {@code AbstractFlyingEntity} is {@code PathfinderMob implements Enemy}. The blocker is not the
- * {@code Enemy} marker and not ownership — the library's own Owl is an {@code AbstractFlyingEntity}
- * that keeps an owner as a bare {@code UUID}. The blocker is that {@code AbstractFlyingEntity} and
- * {@code AgeableMob} are sibling branches of {@code PathfinderMob}, and SMOP's fliers need the
- * ageable branch: they hatch from eggs as chicks, grow, and breed
- * ({@code TamableAnimal → Animal → AgeableMob → PathfinderMob}). Java has one superclass, so the
- * system is brought in rather than inherited — the same call made for {@code SMOPWaterAnimal}.
- *
- * <p>The phases below are synced entity data, so the client sees them for free and the play
- * conditions read them on either side without a packet of their own.
- *
- * <p>Babies never fly. Enforced in {@link #setFlying} <em>and</em> at the gate of
- * {@link TakeoffGoal}, so a chick can neither be put in the air nor enter a half-started takeoff.
- */
 public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
-    /** Airborne right now — drives navigation, gravity and the flight clips. */
     private static final EntityDataAccessor<Boolean> FLYING =
             SynchedEntityData.defineId(SMOPFlyingAnimal.class, EntityDataSerializers.BOOLEAN);
-    /** Leaving the ground: the window the take-off clip owns. */
     private static final EntityDataAccessor<Boolean> TAKING_OFF =
             SynchedEntityData.defineId(SMOPFlyingAnimal.class, EntityDataSerializers.BOOLEAN);
-    /** Final touchdown: the window the landing clip owns. */
     private static final EntityDataAccessor<Boolean> LANDING =
             SynchedEntityData.defineId(SMOPFlyingAnimal.class, EntityDataSerializers.BOOLEAN);
-    /**
-     * Airborne <em>and</em> travelling. Synced because {@code MobAnimator}'s auto-start loop runs on
-     * both sides: a client computing this locally would disagree with the server (it never sees
-     * {@link #seekingGround}) and would restart the travel clip every tick the server stopped it.
-     */
     private static final EntityDataAccessor<Boolean> FLYING_MOVING =
             SynchedEntityData.defineId(SMOPFlyingAnimal.class, EntityDataSerializers.BOOLEAN);
 
@@ -86,39 +47,28 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     // ───────────────────────────────────────────────────── VISUAL TILT ─────
 
-    /** Read by the renderer each frame, interpolated against its {@code prev} twin. */
     public float flightPitch;
     public float prevFlightPitch;
     public float flightRoll;
     public float prevFlightRoll;
     private float smoothedVerticalSpeed;
-    /** Smoothing state for the client half of {@link #tickRotation()} — never written server-side. */
     private float clientYawRate;
     private float clientVerticalSpeed;
     private float clientHorizontalSpeed;
 
     // ───────────────────────────────────────────────────── ANIM HYSTERESIS ─────
 
-    /** Smoothed squared horizontal speed: slow to rise (momentum), quick to fall (responsive stop). */
     private double smoothedHorizontalSpeed;
-    /** Ticks left before the travel clip may drop back to the hover. */
     private int flyAnimHoldTicks;
-    /** Server-local mirror of {@link #FLYING_MOVING}, so both sides read one value. */
     private boolean flyingMovingLocal;
-    /** Descending under power toward the landing approach — the stoop. */
     protected boolean seekingGround;
-    /** Ticks the current aimed stoop has been closing on its target. @see #getMaxSeekGroundTicks() */
     private int seekGroundTicks;
-    /** Parked mid-air between wander legs. Drops the anti-flicker hold so the hover reads at once. */
     private boolean flightHovering;
 
     // ───────────────────────────────────────────────────── TIMERS ─────
 
-    /** Counts down while grounded; takeoff triggers at 0. */
     protected int groundRestTimer = 100;
-    /** Counts up while actually soaring (not taking off, not landing). */
     protected int flightDurationTimer;
-    /** Rolled at the start of each flight; landing begins once the duration passes it. */
     private int maxFlightTicks;
 
     protected SMOPFlyingAnimal(EntityType<? extends TamableAnimal> type, Level level) {
@@ -131,11 +81,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     // ───────────────────────────────────────────────────── NAVIGATION ─────
 
-    /**
-     * Builds both navigators once and returns the ground one. Keeping two live instances is what
-     * makes the switch cheap and, more importantly, stable: the old version rebuilt the navigator on
-     * every mode change, which invalidated every reference a goal had cached.
-     */
     @Override
     protected @NotNull PathNavigation createNavigation(@NotNull Level level) {
         this.groundNavigation = this.createGroundNavigation(level);
@@ -163,11 +108,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         return new SmoothFlyingMoveControl(this, 10, true, this.getFlightYawTurnSpeed());
     }
 
-    /**
-     * Maximum body-yaw turn per tick, in degrees, while flying. Vanilla's 90°/tick snaps the whole
-     * body round in a tick or two on every retarget; a small figure carves arcs the banking roll can
-     * read as a lean.
-     */
     protected float getFlightYawTurnSpeed() {
         return 8.0F;
     }
@@ -190,8 +130,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         }
     }
 
-    /** Fired after {@link #getNavigation()} starts returning a different object, so goals holding a
-     *  cached reference can refresh it. */
     protected void onNavigationSwapped() {
     }
 
@@ -201,7 +139,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         return this.entityData.get(FLYING);
     }
 
-    /** Babies are refused outright — see the class note. */
     public void setFlying(boolean flying) {
         if (flying && this.isBaby()) {
             return;
@@ -225,12 +162,10 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         this.entityData.set(LANDING, value);
     }
 
-    /** Synced and held — safe to read from a play condition on either side. */
     public boolean isFlyingMoving() {
         return this.entityData.get(FLYING_MOVING);
     }
 
-    /** Descending under power toward the landing approach. */
     public boolean isSeekingGround() {
         return this.seekingGround;
     }
@@ -288,11 +223,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         this.onLandingComplete();
     }
 
-    /**
-     * Puts the mob back on its feet and clears every scrap of flight state. Used by
-     * {@link #completeLanding()}, and directly by subclasses for the cases that end a flight without
-     * a touchdown to animate — being perched, picked up, or ordered to sit mid-air.
-     */
     protected void resetFlightState() {
         this.setLanding(false);
         this.setTakingOff(false);
@@ -312,41 +242,18 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         this.entityData.set(FLYING_MOVING, false);
     }
 
-    /**
-     * Asks for a takeoff at the next opportunity by expiring the rest timer, rather than calling
-     * {@link #beginTakeoff()} from outside. Going through {@link TakeoffGoal} keeps the goal's own
-     * {@code canContinueToUse} in step with the state, and keeps the gates (baby, sleeping, perched)
-     * in one place.
-     */
     public void requestTakeoff() {
         if (!this.isFlying() && !this.isTakingOff() && !this.isBaby()) {
             this.groundRestTimer = 0;
         }
     }
 
-    /**
-     * The mirror of {@link #requestTakeoff()}: expires the flight timer so the normal
-     * stoop-then-land path runs at the next opportunity. Nothing is forced — if some goal is holding
-     * MOVE and keeping {@link FlightWanderGoal} out, the mob keeps flying until that goal lets go,
-     * which is the correct outcome for, say, a pet mid-escort.
-     */
     public void requestLanding() {
         if (this.isFlying() && !this.isTakingOff() && !this.isLanding()) {
             this.flightDurationTimer = Math.max(this.flightDurationTimer, this.maxFlightTicks);
         }
     }
 
-    /**
-     * Holds the mob down for at least {@code ticks} longer, by pushing out the same rest timer
-     * {@link #requestTakeoff()} clears. Never shortens an existing hold.
-     *
-     * <p>For grounded moments that have to finish where they started. {@link TakeoffGoal} gates on
-     * nothing but that timer and the movement lock, so a scripted action that pins the mob while it
-     * plays still launches on the very tick its lock expires if the rest timer happened to drain
-     * while it was playing — which it usually has, for anything that runs after a long stretch on the
-     * ground. Asking for the hold at the start of such a moment keeps it on the ground through to
-     * the end of it.
-     */
     public void delayTakeoff(int ticks) {
         if (!this.isFlying() && !this.isTakingOff()) {
             this.groundRestTimer = Math.max(this.groundRestTimer, ticks);
@@ -355,142 +262,90 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     // ───────────────────────────────────────────────────── ANIMATION HOOKS ─────
 
-    /** Leaving the ground — play the take-off clip here. */
     protected void onTakeoffBegin() {
     }
 
-    /** Take-off finished, cruising flight begins. */
     protected void onTakeoffComplete() {
     }
 
-    /** The stoop: the powered descent toward the landing approach has begun. */
     protected void onSeekGroundBegin() {
     }
 
-    /** Final approach — play the landing clip here. */
     protected void onLandingBegin() {
     }
 
-    /** Feet on the ground. Looping locomotion clips restart themselves, so this is usually empty. */
     protected void onLandingComplete() {
     }
 
     // ───────────────────────────────────────────────────── TUNABLES ─────
 
-    /** Minimum altitude in blocks above the terrain beneath the mob. */
     protected double getMinFlightAltitude() {
         return 8.0D;
     }
 
-    /**
-     * Maximum altitude in blocks <em>above the terrain</em>, not an absolute world Y. An absolute
-     * ceiling silently pushes every wander target underground on tall terrain and pins the mob to
-     * the floor.
-     */
     protected double getMaxFlightAltitude() {
         return 30.0D;
     }
 
-    /** Horizontal wander radius in blocks. */
     protected double getWanderHorizontalRadius() {
         return 20.0D;
     }
 
-    /** Ticks spent on the ground before the mob tries to take off. */
     protected int computeGroundRestTicks() {
         return 80 + this.random.nextInt(80);
     }
 
-    /** Ticks in the air before the mob starts looking for somewhere to come down. */
     protected int computeMaxFlightTicks() {
         return 200 + this.random.nextInt(200);
     }
 
-    /** Descent speed in blocks/tick during the final approach. */
     protected double getLandingDescentSpeed() {
         return 0.08D;
     }
 
-    /** Upward speed in blocks/tick sustained through the take-off phase. */
     protected double getTakeoffLiftSpeed() {
         return 0.10D;
     }
 
-    /** Height above terrain at which the stoop hands over to the landing transition. */
     protected double getLandingApproachAltitude() {
         return 4.0D;
     }
 
-    /** Forward speed in blocks/tick during the stoop, so it reads as a swoop and not a lift drop. */
     protected double getDescentForwardSpeed() {
         return 0.25D;
     }
 
-    /**
-     * Where the stoop should put the mob down, or {@code null} for the default — come down wherever
-     * the current heading leads.
-     *
-     * <p>The default stoop does not steer: it runs forward along whatever yaw the mob happened to
-     * hold when the flight timer expired, at {@link #getDescentForwardSpeed()} a tick, from as high
-     * as {@link #getMaxFlightAltitude()}. That is the right look for an idle bird coming down
-     * somewhere, and completely wrong when the mob is coming down <em>for</em> something — the
-     * touchdown lands tens of blocks downrange of it. Return a position and the descent aims: it
-     * turns onto the target, refuses to touch down short of it, and kills the forward run once it is
-     * overhead so the landing is on the spot rather than past it.
-     */
     @Nullable
     protected Vec3 getDescentTarget() {
         return null;
     }
 
-    /** Horizontal distance that counts as overhead of {@link #getDescentTarget()}. */
     protected double getDescentArrivalRadius() {
         return 1.5D;
     }
 
-    /**
-     * Safety net for an aimed stoop: past this many ticks the target is ignored and the mob simply
-     * comes down where it is. Without it, a target behind a wall or over a ledge the mob cannot
-     * close on would hold it circling at approach height indefinitely.
-     */
     protected int getMaxSeekGroundTicks() {
         return 200;
     }
 
-    /** Extra nose-up blended in while landing — the flare that sells the touchdown. */
     protected float getFlarePitchUp() {
         return 12.0F;
     }
 
-    /**
-     * Whether the physics tilt keeps applying during take-off. Return {@code false} when an authored
-     * take-off clip already owns the pose, or the near-vertical climb reads as full nose-up layered
-     * on top of the keyframes. The tilt then eases to zero and fades back in once take-off completes.
-     */
     protected boolean applyTiltDuringTakeoff() {
         return true;
     }
 
-    /**
-     * Hard cap on the landing phase. Past it the landing force-completes and gravity finishes the
-     * job (fliers take no fall damage), so neither a strict completion override nor bouncing against
-     * a slope can leave the mob stuck in the landing state.
-     */
     protected int getMaxLandingTicks() {
         return 100;
     }
 
-    /** Ticks spent hovering between wander legs. */
     protected int computeFlightHoverTicks() {
         return 30 + this.random.nextInt(50);
     }
 
     // ───────────────────────────────────────────────────── WANDER TARGET ─────
 
-    /**
-     * A point to fly to: biased around the current heading, with a climb/descend/hold roll, clamped
-     * to the altitude band above whatever terrain is under the target column.
-     */
     @Nullable
     protected Vec3 findFlightWanderTarget() {
         for (int attempt = 0; attempt < 30; attempt++) {
@@ -529,13 +384,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         return null;
     }
 
-    /**
-     * Y of the first solid block below (x, z), scanning down from the mob.
-     *
-     * <p>Starts by rising out of whatever the mob may be clipping — foliage while gliding through a
-     * canopy — because otherwise the downward scan reports ground at the mob's own feet and triggers
-     * a landing in mid-air. Birds perch on canopies, so the top of the thing counts as ground.
-     */
     protected double findGroundY(double x, double z) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos((int) x, (int) this.getY(), (int) z);
         int maxY = this.level().getMaxY();
@@ -551,20 +399,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     // ───────────────────────────────────────────────────── DIRECT STEERING ─────
 
-    /**
-     * Blends the current velocity toward {@code target} and turns the body at the capped rate.
-     * Smooth arcs, none of the stair-stepping that flying path navigation produces — stop the
-     * navigation first and call this every tick from a goal.
-     *
-     * <p>This is the <b>chase</b> primitive, and deliberately not the same shape as
-     * {@code OrbitFlightController}'s PD loop. That one is a spring: its speed falls off as the
-     * position error shrinks, which is what lets it settle onto a point without ringing — and exactly
-     * what makes it wrong for a pursuit, where closing the last few blocks is when the mob should be
-     * fastest. This one always asks for the full {@code speed} toward the target and only smooths the
-     * direction. Use the PD loop to hold a station, this to run something down.
-     *
-     * @param accel per-tick blend toward the desired velocity; 0.1–0.15 glides, 0.3+ darts
-     */
     protected void steerTowards(Vec3 target, double speed, double accel) {
         Vec3 to = target.subtract(this.position());
         double dist = to.length();
@@ -583,10 +417,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         }
     }
 
-    /** Turns body yaw toward a horizontal heading, at most {@code maxTurnDegrees} per call. The cap
-     *  is what feeds a readable banking roll in {@link #tickRotation()}.
-     *
-     *  <p>Public because the goals that fly by direct velocity control live outside this package. */
     public void faceHeading(double dx, double dz, float maxTurnDegrees) {
         if (dx * dx + dz * dz < 1.0E-4D) {
             return;
@@ -600,11 +430,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     // ───────────────────────────────────────────────────── VISUAL TILT ─────
 
-    /**
-     * Pitch and roll for the renderer. Recomputed on <b>both</b> sides from different inputs:
-     * {@code deltaMovement} is not synced for mobs, so a client running the server formula would
-     * read ~0 and render the flight rigidly level.
-     */
     private void tickRotation() {
         if (this.level().isClientSide()) {
             this.tickClientRotation();
@@ -648,8 +473,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         this.flightRoll = Mth.lerp(0.06F, this.flightRoll, targetRoll);
     }
 
-    /** Client half: pitch from the actual per-tick position delta, roll from the yaw rate, both
-     *  smoothed so the jitter of interpolated positions does not shake the model. */
     private void tickClientRotation() {
         float targetPitch = 0.0F;
         float targetRoll = 0.0F;
@@ -708,7 +531,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         }
     }
 
-    /** Hover versus travel, with the asymmetric hysteresis that keeps the two clips from strobing. */
     private void tickFlyingMoving() {
         // The client reads the synced value; running the logic here would overwrite it with a
         // locally-computed one, and the client never has seekingGround set.
@@ -752,31 +574,16 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
         }
     }
 
-    /**
-     * The ground walk flag stands down in the air. {@code SMOPAnimal} already owns {@code isMoving()}
-     * with the same hold timer, so a second airborne copy of it would be dead API for every flier
-     * that follows.
-     */
     @Override
     protected boolean isMovingNow() {
         return !this.isFlying() && super.isMovingNow();
     }
 
-    /**
-     * A roar pins the mob by zeroing its horizontal movement in {@code SMOPAnimal#travel}. On the
-     * ground that reads as bracing; in the air it would freeze the mob mid-flight until the landing
-     * goal dragged it down. Airborne, a roar plays but does not pin.
-     */
     @Override
     public boolean isMovementLocked() {
         return this.isFlying() ? this.isInSleepCycle() : super.isMovementLocked();
     }
 
-    /**
-     * Sleep only on the ground. {@link TakeoffGoal} deliberately holds no flags — that is what lets
-     * ground goals keep running while it lifts off — so without this gate the selector would happily
-     * launch a sleeping mob into the air.
-     */
     @Override
     protected SleepGoal<SMOPAnimal> createSleepGoal() {
         return new SleepGoal<SMOPAnimal>(this, this.sleepUrge()) {
@@ -789,17 +596,11 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     // ───────────────────────────────────────────────────── PHYSICS ─────
 
-    /** A flier is never hurt by the ground it chose to land on. */
     @Override
     public boolean causeFallDamage(double fallDistance, float damageMultiplier, @NotNull DamageSource source) {
         return false;
     }
 
-    /**
-     * A mob that dies mid-flight still has {@code noGravity} set: without clearing it the corpse
-     * hangs in the air instead of falling. Dead mobs stop steering but physics still applies, so
-     * dropping the flag is all it takes.
-     */
     @Override
     public void die(@NotNull DamageSource source) {
         super.die(source);
@@ -811,27 +612,16 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     // ───────────────────────────────────────────────────── GOAL REGISTRATION ─────
 
-    /**
-     * Registers the three flight goals. {@link TakeoffGoal} holds no flags on purpose, so ground
-     * goals keep running while the mob lifts off; the other two hold MOVE.
-     *
-     * <pre>{@code
-     * this.registerFlightGoals(2, 6, 7);
-     * this.goalSelector.addGoal(9, groundStroll);   // never conflicts: it only runs on the ground
-     * }</pre>
-     */
     protected void registerFlightGoals(int takeoffPriority, int wanderPriority, int landPriority) {
         this.goalSelector.addGoal(takeoffPriority, this.createTakeoffGoal());
         this.goalSelector.addGoal(wanderPriority, new FlightWanderGoal());
         this.goalSelector.addGoal(landPriority, this.createLandingGoal());
     }
 
-    /** Override to return a subclass that waits for the take-off clip to finish. */
     protected TakeoffGoal createTakeoffGoal() {
         return new TakeoffGoal();
     }
 
-    /** Override to return a subclass with a stricter completion test. */
     protected LandingGoal createLandingGoal() {
         return new LandingGoal();
     }
@@ -840,7 +630,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     protected class TakeoffGoal extends Goal {
 
-        /** Ticks since the take-off began — for time-based {@link #shouldCompleteTakeoff()}. */
         protected int takeoffTicks;
 
         @Override
@@ -880,7 +669,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
             }
         }
 
-        /** Override to hold the phase open until the take-off clip finishes. Default: one tick. */
         protected boolean shouldCompleteTakeoff() {
             return true;
         }
@@ -890,7 +678,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     protected class FlightWanderGoal extends Goal {
 
-        /** Ticks left in the current mid-air pause between legs. */
         private int hoverTicksRemaining;
 
         public FlightWanderGoal() {
@@ -963,15 +750,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
             this.hoverTicksRemaining = SMOPFlyingAnimal.this.computeFlightHoverTicks();
         }
 
-        /**
-         * The stoop: keeps flying forward along the current heading while sinking, so the travel clip
-         * plays all the way down like a bird swooping in. Sink rate scales with the remaining
-         * altitude, so the approach eases in. Hands over to {@link LandingGoal} within
-         * {@link #getLandingApproachAltitude()} of the terrain.
-         *
-         * <p>Velocity is written directly rather than routed through the flying navigation because a
-         * nav target below the mob drives the flying move control into an {@code atan2(0, 0)} yaw spin.
-         */
         private void tickSeekGround() {
             double groundY = SMOPFlyingAnimal.this.findGroundY(
                     SMOPFlyingAnimal.this.getX(), SMOPFlyingAnimal.this.getZ());
@@ -1030,7 +808,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     protected class LandingGoal extends Goal {
 
-        /** Ticks since the landing began — drives the {@link #getMaxLandingTicks()} safety net. */
         protected int landingTicks;
 
         public LandingGoal() {
@@ -1070,15 +847,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
                     Math.min(SMOPFlyingAnimal.this.getLandingDescentSpeed(), distToGround * 0.06D));
         }
 
-        /**
-         * Default: physical ground contact, water contact (collision flags never fire on fluids, so
-         * without this a water touchdown bobs in the landing state forever), or terrain closer than a
-         * step — the flare's glide momentum can skim the mob across uneven ground and miss a tick of
-         * the collision flags.
-         *
-         * <p>Override to hold the phase open until the landing clip finishes, but keep this as the
-         * floor: the phase is capped by {@link #getMaxLandingTicks()} either way.
-         */
         protected boolean shouldCompleteLanding() {
             if (SMOPFlyingAnimal.this.onGround() || SMOPFlyingAnimal.this.verticalCollision
                     || SMOPFlyingAnimal.this.isInWater()) {
@@ -1091,11 +859,6 @@ public abstract class SMOPFlyingAnimal extends GenderedSMOPAnimal {
 
     // ───────────────────────────────────────────────────── NBT ─────
 
-    /**
-     * The flight phases are entity data, which is not persisted — so without this a chunk reload
-     * drops a mid-flight mob back into grounded logic while it hangs in the air, playing the ground
-     * idle until the rest timer happens to force a take-off.
-     */
     @Override
     protected void addAdditionalSaveData(@NotNull ValueOutput output) {
         super.addAdditionalSaveData(output);

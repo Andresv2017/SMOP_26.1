@@ -5,7 +5,6 @@ import net.minecraft.world.entity.ai.goal.RandomSwimmingGoal;
 
 import java.util.function.BooleanSupplier;
 
-/** Aquatic counterpart of {@link SMOPRandomStrollGoal}; same single extra condition, same reasoning. */
 public class SMOPRandomSwimmingGoal extends RandomSwimmingGoal {
 
     private final BooleanSupplier canRun;

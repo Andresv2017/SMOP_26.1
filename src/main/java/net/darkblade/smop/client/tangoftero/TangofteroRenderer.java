@@ -13,16 +13,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.EnumMap;
 import java.util.Map;
 
-/**
- * Renders the Tangoftero, swapping between the adult and baby models by age.
- *
- * <p>Extends vanilla's {@link AgeableMobRenderer} rather than DeluxeLib's {@code CustomMobRenderer}
- * for two reasons: it handles the adult/baby model swap for free, and it is generic over the render
- * state, which {@code CustomMobRenderer} pins to {@code DeluxeEntityRenderState} — this mob needs
- * its own subclass to carry the coat variant. The two things {@code CustomMobRenderer} would have
- * provided (capturing the animator onto the state, and disabling the vanilla death flip) are the
- * few lines below.
- */
 public class TangofteroRenderer
         extends AgeableMobRenderer<TangofteroEntity, TangofteroRenderState, EntityModel<? super TangofteroRenderState>> {
 
@@ -61,7 +51,6 @@ public class TangofteroRenderer
         state.variantId = entity.getVariantId();
     }
 
-    /** Off, so the authored death clip is not fought by vanilla's 90° corpse flop. */
     @Override
     protected float getFlipDegrees() {
         return 0.0F;

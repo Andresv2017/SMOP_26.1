@@ -6,10 +6,6 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import java.util.EnumSet;
 import java.util.List;
 
-/**
- * Wild Tangofteros join a flockmate's fight. Tamed ones stay out of it — a pet answers to its owner,
- * not to whatever the local wild flock has decided to attack.
- */
 public class AssistFlockGoal extends Goal {
 
     private final TangofteroEntity tango;

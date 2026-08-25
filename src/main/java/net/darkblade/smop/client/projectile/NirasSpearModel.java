@@ -14,15 +14,6 @@ import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Unit;
 
-/**
- * The spear mesh.
- *
- * <p>Geometry is authored art and travels unchanged. What changed around it is the base class:
- * 26.1's {@code Model} is generic over the state it is handed, and a projectile has none, so it is
- * {@code Model<Unit>} — the same declaration vanilla's own {@code TridentModel} carries. The root
- * part is passed to {@code super} now instead of being rendered by an overridden
- * {@code renderToBuffer}, which no longer exists.
- */
 public class NirasSpearModel extends Model<Unit> {
 
     public static final ModelLayerLocation LAYER_LOCATION =

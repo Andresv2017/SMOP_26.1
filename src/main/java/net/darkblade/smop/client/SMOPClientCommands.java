@@ -11,13 +11,6 @@ import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * SMOP's client-only debug commands, and the numpad input they route.
- *
- * <p>Registered on the CLIENT dispatcher rather than the server one, and left unrestricted: each of
- * these only affects local rendering and is a no-op for anybody else, so there is nothing to gate on
- * operator level. Same split — and same reasoning — as DeluxeLib's own {@code DeluxeCommands.Client}.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID, value = Dist.CLIENT)
 public final class SMOPClientCommands {
 
@@ -39,7 +32,6 @@ public final class SMOPClientCommands {
                                 })))));
     }
 
-    /** Feeds raw key presses to the tuner; it ignores everything while inactive. */
     @SubscribeEvent
     public static void onKeyInput(InputEvent.@NotNull Key event) {
         KriftoPerchTuner.onKey(event.getKey(), event.getAction());

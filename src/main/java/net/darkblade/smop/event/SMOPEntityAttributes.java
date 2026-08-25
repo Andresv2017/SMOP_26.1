@@ -17,7 +17,6 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
 
-/** Attributes and spawn placement rules for SMOP's mobs. Both are mod-bus events. */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPEntityAttributes {
 
@@ -31,9 +30,6 @@ public final class SMOPEntityAttributes {
         event.put(SMOPEntities.GT.get(), GTEntity.createAttributes().build());
     }
 
-    /**
-     * Spawn placements are registered through an event rather than a static call at setup.
-     */
     @SubscribeEvent
     static void onSpawnPlacements(RegisterSpawnPlacementsEvent event) {
         event.register(SMOPEntities.TANGOFTERO.get(),

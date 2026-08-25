@@ -54,87 +54,34 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/**
- * The salmon: a river-bed forager that digs up whatever the substrate is hiding.
- *
- * <p>Hand it a pufferfish and it goes looking for sand, gravel, mud or dirt to root through; breed
- * it with cod and it spawns roe on the river floor.
- */
 public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluator, SwimTilt {
 
     // ───────────────────────────────────────────────────── TUNING ─────
 
-    /** A pufferfish only buys one dig per minute, so a stack is not an excavation machine. */
     private static final int DIG_COMMAND_COOLDOWN_TICKS = 1200;
 
-    /**
-     * Swim steer, scaled for a fish rather than for the three-block reptile it was written against.
-     *
-     * <p>Six degrees a tick against vanilla's ten and the Nirasmosaurus's 2.2, and a five-tick ramp
-     * against its fifteen. The point of the shared control is the <em>shape</em> of a turn — wind up,
-     * hold, ease out, never a step — not the mass of any particular animal; a salmon that took three
-     * quarters of a second to commit to a turn would read as a log. The in-water speed multiplier is
-     * 0.02, exactly what {@code SmoothSwimmingMoveControl} was using here, so the cruise speed is
-     * unchanged and only the steering is different.
-     */
     private static final float SWIM_TURN_SPEED = 6.0F;
     private static final float SWIM_MAX_PITCH = 45.0F;
     private static final float SWIM_PITCH_SPEED = 6.0F;
     private static final float SWIM_SPEED_SCALE = 0.02F;
     private static final float SWIM_RAMP_TICKS = 5.0F;
 
-    /**
-     * Vertical-to-forward drive balance, down from the control's default of 6.
-     *
-     * <p>Measured, not guessed. {@code moveRelative} normalises the drive vector, so the gain decides
-     * what FRACTION of the motion is vertical rather than adding to it. At 6 the tick samples show this
-     * animal reaching {@code dY} of −0.098 against a horizontal speed near 0.065 — it was descending
-     * faster than it swam forward, a dive past 55 degrees. Invisible while the model rendered level;
-     * absurd the moment the body followed the trajectory.
-     *
-     * <p>Two keeps depth changes decisive while leaving the steepest of them inside the tilt clamp, so
-     * the body can express the whole angle instead of parking against the stop.
-     */
     private static final float SWIM_VERTICAL_GAIN = 2.0F;
 
-    /**
-     * Pure-pursuit lookahead, in blocks. Three, against the Nirasmosaurus's seven: the aim point has to
-     * sit beyond the turn radius to smooth anything, and this animal's is a fraction of that one's.
-     * Longer would just cut corners off its own route.
-     */
     private static final double SWIM_LOOKAHEAD = 3.0D;
 
-    /**
-     * Wander legs, in blocks, and the heading cone in degrees.
-     *
-     * <p>12–22 and 70, worked from the rule rather than copied: a leg has to outlast the turn that
-     * opens it. Seventy degrees at six a tick plus the ramp is about twenty-two ticks; a leg with the
-     * five-block hand-over taken off is seven to seventeen blocks, which this animal crosses in sixty
-     * to a hundred and forty. Comfortable margin, where the Nirasmosaurus's first attempt had none.
-     *
-     * <p>The cone is wider than that animal's 55 on purpose — a fish is allowed to be capricious in a
-     * way a marine reptile is not. And 22 stays under {@code FOLLOW_RANGE}, so unlike the
-     * Nirasmosaurus this one needs no {@code setRequiredPathLength}: every leg it draws is pathable.
-     */
     private static final double WANDER_LEG_MIN = 12.0D;
     private static final double WANDER_LEG_SPREAD = 10.0D;
     private static final float WANDER_CONE_DEGREES = 70.0F;
 
-    /** Frame of the {@code dig} clip on which the snout actually turns the block over. */
     private static final int DIG_BREAK_FRAME = 35;
 
-    /**
-     * Nothing is prey. The salmon has no hunting goal at all — its only target route is
-     * {@code HurtByTargetGoal}, so it bites back and nothing else. Kept as an explicit constant
-     * because {@link EggGoalRegistry} wants a selector and "nobody" is the honest answer.
-     */
     private static final Predicate<LivingEntity> NO_PREY = entity -> false;
 
     // ───────────────────────────────────────────────────── STATE ─────
 
     private int digCommandCooldown;
     private boolean digCommand;
-    /** Where the dig goal sent it; the {@code dig} clip's frame event turns this block over. */
     @Nullable
     private BlockPos digTarget;
 
@@ -148,25 +95,11 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
                 .verticalGain(SWIM_VERTICAL_GAIN);
     }
 
-    /**
-     * The look control is deliberately left alone — the base's {@code SmoothSwimmingLookControl} stays.
-     *
-     * <p>The Nirasmosaurus replaced it because its three fish quirks all read wrong on a long skull
-     * with forward eyes, and the loudest of them is that it aims the head twenty degrees off whatever
-     * it is watching. That one is not a bug here: Mojang wrote it for fish, and a fish regarding
-     * something side-on is what it is meant to look like. Sharing the navigation and the steering does
-     * not mean sharing everything.
-     */
     @Override
     protected @NotNull PathNavigation createNavigation(@NotNull Level level) {
         return new SmartSwimmingNavigation(this, level).setLookahead(SWIM_LOOKAHEAD);
     }
 
-    /**
-     * Built from {@link Animal#createAnimalAttributes()} for the same reason the Tangoftero is: in
-     * 26.1 vanilla reads {@code Attributes.TEMPT_RANGE} off anything extending {@code Animal}, and
-     * an attribute the supplier never declared throws on the first tick.
-     */
     public static AttributeSupplier.Builder createAttributes() {
         return Animal.createAnimalAttributes()
                 .add(Attributes.MAX_HEALTH, 10.0D)
@@ -177,18 +110,6 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
                 .add(Attributes.ATTACK_DAMAGE, 1.0D);
     }
 
-    /**
-     * The sprint clip runs while it has something to deal with — by goal, not by speed.
-     *
-     * <p>The base's default is a speed threshold, and the salmon's was 0.105 blocks a tick, which sits
-     * right on top of its own cruise: the flag chattered across the line and the two locomotion clips
-     * swapped with it. No threshold fixes that, because speed is not what the clip is about. Its only
-     * target route is {@code HurtByTargetGoal}, so a target means it is fighting back or running from
-     * whatever just bit it — which is exactly when a fish should be flat out.
-     *
-     * <p>{@code getTarget()} is not synced, and that is fine here: this runs server-side and the base
-     * syncs the result. @see SMOPWaterAnimal#shouldSwimFast
-     */
     @Override
     protected boolean shouldSwimFast() {
         return this.getTarget() != null;
@@ -229,13 +150,6 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
 
     // ───────────────────────────────────────────────────── ANIMATIONS ─────
 
-    /**
-     * Exclusion between clips is by <b>priority</b>, not by play condition. Locomotion sits at 2–3
-     * and every one-shot at 0–1, so {@code BlendLayer#current} renders the one-shot while the swim
-     * cycle keeps running underneath — which is what makes the frame a dig or a bite ends have
-     * something to fall back to instead of collapsing to the bind pose. Same arrangement as the
-     * Tangoftero; see its {@code canPlayLocomotion} for the full reasoning.
-     */
     @Override
     public void registerAnimations() {
         StandardAnimation idle = clip("idle", () -> SalmonAnimations.idle, Loop.REPEATING, 3, 2.0F);
@@ -286,13 +200,6 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         this.animator().registerDeath(waterDeath, landDeath);
     }
 
-    /**
-     * {@code AnimationDefinition} is {@code @OnlyIn(Dist.CLIENT)} and {@code registerAnimations()}
-     * runs on both sides, so the definition is read through a supplier that only ever resolves
-     * during client rendering. Touching the field directly here would load the class and kill a
-     * dedicated server — and {@code MobAnimator}'s {@code catch (Exception)} would not save it,
-     * because a failing static initialiser throws an {@code Error}.
-     */
     private StandardAnimation clip(String name, java.util.function.Supplier<Object> definition,
                                    Loop loop, int priority, float seconds) {
         return new StandardAnimation(name, new AnimSource(definition), loop, 0, priority, seconds);
@@ -313,7 +220,6 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
 
     // ───────────────────────────────────────────────────── VISUAL TILT ─────
 
-    /** Nose up/down and bank, for the renderer. Interpolated against the prev pair. */
     public float swimPitch;
     public float prevSwimPitch;
     public float swimRoll;
@@ -329,72 +235,17 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         return this.swimRoll;
     }
 
-    /**
-     * How far the body may nose up or down, and how far it may bank.
-     *
-     * <p>Both above the Nirasmosaurus's 30 and 35. That animal is three blocks long, so the same angle
-     * sweeps far more silhouette and it has to be reined in; a salmon is a hand-span of fish and can
-     * throw itself around. 45 is roughly the steepest climb the tick samples show it actually making.
-     */
     private static final float MAX_TILT_PITCH = 45.0F;
     private static final float MAX_TILT_ROLL = 25.0F;
 
-    /**
-     * Below this vertical speed the body stays level.
-     *
-     * <p>Six thousandths, and the number is not arbitrary: {@code SMOPWaterAnimal#travel} adds exactly
-     * {@code -0.005} per tick whenever the mob has no target, so an idling swimmer is always sinking a
-     * little. Without a threshold above that, a fish hanging in the water would hold a permanent
-     * four-degree droop — the tick samples show {@code dY} parked at exactly {@code -0.0050} through
-     * whole idle stretches, which is that trim and nothing else.
-     */
     private static final float TILT_DEAD_ZONE = 0.006F;
 
-    /** Bank per degree of yaw per tick. @see #tickSwimTilt */
     private static final float ROLL_GAIN = 4.5F;
 
-    /** Horizontal speed at which the bank reaches full strength. */
     private static final double ROLL_FULL_SPEED = 15.0D;
 
-    /**
-     * How fast the drawn tilt chases its target. Quicker than the Nirasmosaurus's 0.06 — a fish.
-     *
-     * <p><b>One smoothing stage, not two.</b> The first version smoothed the vertical speed AND then
-     * smoothed the resulting angle, and two lerps in series add their lags: a tick sample caught the
-     * body pitched {@code +41.6} nose-up while {@code dY} had already gone to {@code −0.0036}, i.e.
-     * fully committed to a climb it had stopped making about a second earlier. The angle is what gets
-     * drawn, so the angle is the only thing worth filtering.
-     *
-     * <p><b>But dropping the input stage is what made it read as jerky</b>, and the input stage was not
-     * the reason. The lerp on the vertical speed had been hiding the hard edge of
-     * {@link #TILT_DEAD_ZONE}: with it gone, a sample shows {@code swimPitch} sitting at {@code -0.000}
-     * for entire stretches and then jumping to {@code 1.503} on the single tick {@code dY} crossed from
-     * {@code 0.0058} to {@code 0.0083}. Softening the knee fixes the step at its source, so this can
-     * stay a single stage — and 0.15 rather than 0.2, since there is no longer a second filter's worth
-     * of smoothing to make up for.
-     */
     private static final float TILT_SMOOTHING = 0.15F;
 
-    /**
-     * Pitch and roll, recomputed on <b>both</b> sides from different inputs.
-     *
-     * <p>{@code deltaMovement} is not synced for mobs, so a client running the server's formula would
-     * read roughly zero and render the fish rigidly level. The server reads its own velocity; the
-     * client reads the per-tick position delta it interpolates anyway.
-     *
-     * <p><b>The pitch is the trajectory angle, not a gain on the vertical speed.</b> The Nirasmosaurus
-     * multiplies by 300 and clamps, a constant found by trial; that number is only right for one
-     * animal's range of speeds, and this one is four times quicker vertically — the samples reach
-     * {@code dY} of −0.093 against that animal's 0.024, so the same gain would peg the clamp and hold
-     * it there through every descent. {@code atan2(vertical, horizontal)} is the angle the fish is
-     * genuinely travelling along, so it needs no constant: a level cruise gives a couple of degrees and
-     * a real dive gives a real angle.
-     *
-     * <p><b>It can still saturate, and it did.</b> "Cannot saturate wrongly" was too strong — the
-     * formula was right and the trajectory was the problem: samples had it pinned within a degree of
-     * the 45 clamp for twenty-five ticks at a stretch, because the animal really was diving at 57. That
-     * is fixed at the source, in {@link #SWIM_VERTICAL_GAIN}, not by widening the clamp.
-     */
     private void tickSwimTilt() {
         this.prevSwimPitch = this.swimPitch;
         this.prevSwimRoll = this.swimRoll;
@@ -447,7 +298,6 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
 
     // ───────────────────────────────────────────────────── DIGGING ─────
 
-    /** True while a pufferfish is still bought and paid for. Read by {@link SalmonDigGoal}. */
     public boolean wantsToDig() {
         return this.digCommand;
     }
@@ -459,7 +309,6 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         }
     }
 
-    /** The dig goal parks its target here so the clip's frame event knows what to turn over. */
     public void setDigTarget(@Nullable BlockPos pos) {
         this.digTarget = pos;
     }
@@ -469,11 +318,6 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         return this.digTarget;
     }
 
-    /**
-     * Fired from the {@code dig} clip's own frame event: drops whatever the substrate was hiding and
-     * removes the block. No-op if the target went away mid-clip (another mob mined it, the chunk
-     * unloaded), so a stale frame event cannot destroy the wrong block.
-     */
     private void completeDig() {
         BlockPos target = this.digTarget;
         if (target == null || !(this.level() instanceof ServerLevel level)) {
@@ -544,7 +388,6 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         return super.finalizeSpawn(level, difficulty, reason, spawnData);
     }
 
-    /** Needs water at its feet and water above, so it spawns in a body of water rather than a film. */
     public static boolean checkSalmonSpawnRules(EntityType<SalmonEntity> type, ServerLevelAccessor level,
                                                 EntitySpawnReason reason, BlockPos pos, RandomSource random) {
         return level.getFluidState(pos).is(FluidTags.WATER)

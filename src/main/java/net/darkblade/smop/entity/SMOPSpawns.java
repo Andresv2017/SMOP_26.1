@@ -5,19 +5,6 @@ import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.biome.Biomes;
 
-/**
- * Which biomes each mob is added to, declared through DeluxeLib's {@link DeluxeBiomeSpawns}.
- *
- * <p>Registering a spawn placement (see {@code SMOPEntityAttributes}) only says <em>where within a
- * biome</em> a mob may appear — it does not put the mob into any biome's spawner list. That second
- * half is a {@code neoforge:add_spawns} biome modifier. Entries submitted here are held in memory
- * and written out as that datapack file by {@code DeluxeBiomeSpawnProvider} during server datagen, so
- * the file cannot drift away from the registry.
- *
- * <p>Called from {@code SMOP}'s constructor: the builder demands to run during mod initialisation,
- * and the entity type is captured as a supplier so the {@code DeferredHolder} is only resolved once
- * the registry is populated.
- */
 public final class SMOPSpawns {
 
     public static void register() {

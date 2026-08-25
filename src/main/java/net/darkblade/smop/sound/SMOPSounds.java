@@ -7,18 +7,14 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-/** Sound event registry. Definitions live in {@code assets/smop/sounds.json}. */
 public final class SMOPSounds {
 
     public static final DeferredRegister<SoundEvent> SOUNDS =
             DeferredRegister.create(Registries.SOUND_EVENT, SMOP.MOD_ID);
 
-    /** The Grand Tyrant's roar. Fixed 64-block range so it carries across the whole encounter. */
     public static final DeferredHolder<SoundEvent, SoundEvent> GT_ROAR =
             SOUNDS.register("gt_roar", () -> SoundEvent.createFixedRangeEvent(SMOP.id("gt_roar"), 64.0F));
 
-    /** The Kriftognathus's ambient call. Ordinary distance attenuation — an ambient creature sound,
-     *  not a boss cue that needs to carry. */
     public static final DeferredHolder<SoundEvent, SoundEvent> KRIFTO_SQUAWK =
             SOUNDS.register("krifto_squawk", () -> SoundEvent.createVariableRangeEvent(SMOP.id("krifto_squawk")));
 

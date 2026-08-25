@@ -10,27 +10,9 @@ import net.minecraft.world.item.component.Consumable;
 import net.minecraft.world.item.component.Consumables;
 import net.minecraft.world.item.consume_effects.ApplyStatusEffectsConsumeEffect;
 
-/**
- * Nutrition/saturation and eat-time side effects for SMOP's edible items.
- *
- * <p>{@code FoodProperties} is a bare {@code (nutrition, saturation, canAlwaysEat)} record: its
- * builder has neither {@code .effect(...)} nor {@code .meat()}.
- * <ul>
- *   <li>Eat-time status effects moved to the {@link Consumable} component — hence the
- *       {@link Entry} pairing below, fed to {@code Item.Properties#food(FoodProperties, Consumable)}.</li>
- *   <li>{@code .meat()} is gone entirely. Its only gameplay effect was letting wolves be fed the
- *       item, which is now driven by the {@code minecraft:wolf_food} item tag — see
- *       {@code data/minecraft/tags/item/wolf_food.json}.</li>
- * </ul>
- *
- * <p>Also note {@code MobEffects.DAMAGE_BOOST} was renamed to {@link MobEffects#STRENGTH}, and the
- * {@code MobEffects} constants are {@code Holder<MobEffect>} rather than raw effects.
- */
 public final class SMOPFoods {
 
-    /** A food's nutrition values paired with the consume behaviour that carries its side effects. */
     public record Entry(FoodProperties properties, Consumable consumable) {
-        /** Applies both halves to an item's properties. */
         public Item.Properties applyTo(Item.Properties props) {
             return props.food(this.properties, this.consumable);
         }

@@ -5,16 +5,6 @@ import net.minecraft.client.animation.AnimationDefinition;
 import net.minecraft.client.animation.Keyframe;
 import net.minecraft.client.animation.KeyframeAnimations;
 
-/**
- * Hell Hippo calf clips. The calf is not a scaled adult — it has its own, smaller skeleton —
- * so it carries its own clip set, addressed against {@link HellHippoBabyModel}.
- *
- * <p><b>Dropped channels.</b> The export animated {@code left_calf}/{@code right_calf} (in
- * {@code attack}, {@code awakening}, {@code death}, {@code sleep}, {@code sleep_preparing} and
- * {@code sprint}) plus {@code nose_hairs} (in {@code sleep}), none of which the calf mesh defines. A
- * channel naming a bone the mesh lacks throws {@code "Cannot animate X, which does not exist in
- * model"} at bake time, on the very first frame the mob renders.
- */
 public final class HellHippoBabyAnimations {
 
     public static final AnimationDefinition pose = AnimationDefinition.Builder.withLength(0.0F)
@@ -144,13 +134,6 @@ public final class HellHippoBabyAnimations {
             ))
             .build();
 
-      /**
-     * Derived from the adult's {@code walk}: none was authored for the calf, which otherwise sprints
-     * whenever it moves on land. The two hind-leg calf bones the adult
-     * animates do not exist on this mesh (see {@code HellHippoBabyModel}), so those channels are
-     * dropped; every other bone maps one to one, and the leg rotations read correctly on the
-     * shorter limbs because they are angles, not offsets.
-     */
     public static final AnimationDefinition walk = AnimationDefinition.Builder.withLength(1.5F).looping()
               .addAnimation("neck", new AnimationChannel(AnimationChannel.Targets.ROTATION,
                       new Keyframe(0.0F, KeyframeAnimations.degreeVec(7.5F, 0.0F, 0.0F), AnimationChannel.Interpolations.CATMULLROM),

@@ -5,22 +5,6 @@ import net.minecraft.client.animation.AnimationDefinition;
 import net.minecraft.client.animation.Keyframe;
 import net.minecraft.client.animation.KeyframeAnimations;
 
-/**
- * Kriftognathus chick clips, against the bone names in {@link KriftoBabyModel}. A clip naming a bone
- * this mesh does not define throws at bake time, on the first frame the chick is rendered, so the two
- * files have to agree exactly.
- *
- * <p><b>Channels were removed from this export, deliberately.</b> Five clips arrived animating
- * {@code left_calf}, {@code right_calf} and the {@code claws} bones — and one animating {@code gTail},
- * a name from the adult's <em>previous</em> rig. The chick has none of those: its back leg is one
- * segment and its feet are part of the leg. Those channels could never have rendered; they could only
- * crash. They were dropped from {@code pose}, {@code sprint}, {@code sprint_bite},
- * {@code on_players_head} and {@code sleep} ({@code sleep} already carried its own valid {@code tail}
- * channel alongside the stale {@code gTail}, which is what gives the copy away).
- *
- * <p>The export named two clips with hyphens ({@code l-idle}, {@code sprint-bite}), which are not
- * legal Java identifiers; they are {@code l_idle} and {@code sprint_bite} here.
- */
 public class KriftoBabyAnimations {
 
 	public static final AnimationDefinition pose = AnimationDefinition.Builder.withLength(0.0F)

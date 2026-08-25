@@ -5,31 +5,6 @@ import net.minecraft.client.animation.AnimationDefinition;
 import net.minecraft.client.animation.Keyframe;
 import net.minecraft.client.animation.KeyframeAnimations;
 
-/**
- * How a player sits on a Hell Hippo, in the {@code HumanoidPoseApplier} format (bones {@code torso},
- * {@code head}, {@code right_arm}, {@code left_arm}, {@code right_leg}, {@code left_leg}).
- * {@code HellHippoRenderer#applyRiderPose} applies it.
- *
- * <p><b>Which channels this authors is the whole design</b>, the same lesson {@code KriftoRiderPose}
- * spells out: the applier resets only the channels a definition actually declares and leaves the rest
- * to vanilla. An all-zero rotation channel is <em>not</em> a no-op — it pins the bone to its bind
- * pose. So this authors:
- *
- * <ul>
- *   <li><b>Legs</b>, rotation only — swung forward and splayed outward to straddle a body two and a
- *       half blocks wide. Replacing vanilla's walk swing is the point; a rider whose legs keep
- *       striding in mid-air is the thing this exists to stop.</li>
- *   <li><b>Arms</b>, rotation only — forward and slightly inward, hands where reins would be.</li>
- *   <li><b>Torso</b>, a small forward lean, so the rider reads as leaning into the animal rather than
- *       sitting to attention on it.</li>
- * </ul>
- *
- * <p>The head is deliberately left alone. Authoring nothing for it keeps vanilla's head-look running,
- * so the rider still looks where the player is looking.
- *
- * <p>Hand-authored rather than exported from Blockbench, so the numbers are readable and tunable in
- * place. Re-posing it on a player-replica rig and exporting over this file works exactly as well.
- */
 public final class HellHippoRiderPose {
 
     public static final AnimationDefinition SEATED = AnimationDefinition.Builder.withLength(0.0F)

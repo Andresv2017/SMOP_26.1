@@ -5,14 +5,6 @@ import net.minecraft.client.animation.AnimationDefinition;
 import net.minecraft.client.animation.Keyframe;
 import net.minecraft.client.animation.KeyframeAnimations;
 
-/**
- * Adult Hell Hippo clips, addressed against the bone names in {@link HellHippoModel}.
- *
- * <p><b>Dropped channels.</b> The export animated a {@code neck2} bone in {@code attack}, {@code bite},
- * {@code eat} and {@code shake} that {@link HellHippoModel} does not define. A channel naming a bone
- * the mesh lacks throws {@code "Cannot animate X, which does not exist in model"} at bake time, on the
- * very first frame the mob renders — so they are dropped rather than carried.
- */
 public final class HellHippoAnimations {
 
           public static final AnimationDefinition pose = AnimationDefinition.Builder.withLength(0.0F)

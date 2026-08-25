@@ -5,21 +5,6 @@ import net.minecraft.client.animation.AnimationDefinition;
 import net.minecraft.client.animation.Keyframe;
 import net.minecraft.client.animation.KeyframeAnimations;
 
-/**
- * Adult Nirasmosaurus clips on land, against {@link NirasmosaurusModel}.
- *
- * <p><b>Pruned channels.</b> The Blockbench export animates bones this mesh never defines, and 26.1
- * THROWS on a bone it cannot resolve rather than skipping it — so those channels are dropped, and
- * adding one back for a bone that is not in the mesh crashes at bake time.
- *
- * <p><b>Bone names are case-sensitive:</b> {@code goofy} addressed {@code gEyes} while this mesh
- * spells it {@code GEyes}, so the channel silently moved nothing until it was corrected.
- *
- * <p><b>Why the clips are split across classes</b> rather than merged into one file per rig, as the
- * other SMOP mobs do: every static initialiser in a class compiles into a single {@code <clinit>}
- * method, and the JVM caps a method at 64 KB. All 34 adult clips in one class overflows it — the
- * compiler answers "code too large".
- */
 public final class NirasLandAnimations {
 
     public static final AnimationDefinition lidle = AnimationDefinition.Builder.withLength(4.0F).looping()

@@ -28,51 +28,22 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Sends a salmon that has been shown a pufferfish to root through the river bed.
- *
- * <p>Picks a diggable block it can actually path to, swims there playing {@code sniff}, then plays
- * {@code dig} — and stops there. <b>The block is turned over by a frame event on the dig clip</b>
- * ({@code SalmonEntity#completeDig}), not by a counter in this goal — a counter running beside the
- * clip only stays in step while two numbers are kept written down twice.
- */
 public class SalmonDigGoal extends Goal {
 
-    /** How far out it will look for something to dig. */
     private static final int SEARCH_RANGE = 12;
-    /**
-     * How far <b>below</b> itself it looks, and it has to be this deep: a salmon cruises in midwater
-     * and the river bed is routinely three or four blocks under it, so a shallow box never contains a
-     * diggable block at all and the pufferfish is spent on a search that cannot succeed.
-     */
     private static final int SEARCH_DOWN = 6;
     private static final int SEARCH_UP = 2;
-    /** Cap on A* calls per scan: pathing is the expensive part, the block tests are not. */
     private static final int MAX_PATH_CHECKS = 8;
-    /** Ticks between failed scans, so an impossible request does not re-run A* every tick. */
     private static final int RESCAN_COOLDOWN = 40;
-    /** Failed scans before the request is dropped, rather than retrying for the rest of the fish's life. */
     private static final int MAX_FAILED_SCANS = 5;
-    /** Give up on a block after this many failed approaches, so one unreachable spot is not retried forever. */
     private static final int MAX_RETRIES = 3;
-    /** Hard ceiling on one dig trip, in case the target becomes unreachable mid-swim. */
     private static final int GIVE_UP_TICKS = 200;
-    /**
-     * Close enough to start digging, measured from the fish to the block's centre.
-     *
-     * <p>Generous on purpose: the navigator parks the fish in the water block <em>next to</em> the
-     * target, so the centre-to-centre distance at the moment it arrives is already about 1.5, and
-     * more when the approach is above or below. A tight radius here meant a fish that had arrived
-     * and had nowhere left to swim still counted as "not there yet".
-     */
     private static final double DIG_RANGE = 2.6D;
-    /** Gap between re-issuing a move order, so a stalled path is retried but not spammed. */
     private static final int REPATH_COOLDOWN = 20;
 
     private final SalmonEntity salmon;
     private final double speed;
 
-    /** Failed approaches per block, so a spot the navigator cannot reach drops out of the running. */
     private final Map<BlockPos, Integer> retries = new HashMap<>();
 
     @Nullable
@@ -83,12 +54,6 @@ public class SalmonDigGoal extends Goal {
     private int rescanCooldown;
     private int failedScans;
 
-    /**
-     * Traces every decision of the dig cycle to the server log under {@code [SALMON DIG]}. Off by
-     * default; flip it on to find out which stage a request dies at — the scan lines alone tell you
-     * whether there was no diggable material in range, material that was not exposed bed, or bed
-     * that could not be pathed to.
-     */
     public static final boolean DEBUG = false;
 
     public SalmonDigGoal(SalmonEntity salmon, double speed) {
@@ -224,15 +189,6 @@ public class SalmonDigGoal extends Goal {
                 35);
     }
 
-    /**
-     * Swims to the water block <b>on top of</b> the target, never into the target itself.
-     *
-     * <p>Aiming at the bed block's own centre cannot work: it is solid, so {@code SwimNodeEvaluator}
-     * types it BLOCKED and A* never produces a node there. The navigator then hands back a partial
-     * path that leads nowhere while {@code moveTo} still reports success — the path is non-null — so
-     * the fish re-issues an order it cannot follow until the timeout. The open water above the bed is
-     * both reachable and where the fish should hover to dig.
-     */
     private boolean moveToTarget() {
         if (this.target == null) {
             return false;
@@ -249,15 +205,6 @@ public class SalmonDigGoal extends Goal {
         return ok;
     }
 
-    /**
-     * The water block the fish parks in to work on {@code bed} — above it for a river bed, beside it
-     * for a tank wall.
-     *
-     * <p>Never {@code bed} itself: that block is solid, so {@code SwimNodeEvaluator} types it
-     * BLOCKED and A* cannot place a node there. Aiming at it returned a partial path that led
-     * nowhere while {@code moveTo} still reported success, which is what left the fish re-issuing an
-     * order it could not follow until the goal timed out.
-     */
     @Nullable
     private static BlockPos approachFor(Level level, BlockPos bed) {
         if (isWater(level, bed.above())) {
@@ -280,10 +227,6 @@ public class SalmonDigGoal extends Goal {
         this.salmon.setDigCommand(false);
     }
 
-    /**
-     * The nearest handful of diggable blocks, then one of them at random — so a shoal shown
-     * pufferfish at the same time does not all converge on the single closest block.
-     */
     @Nullable
     private BlockPos findDigSite() {
         BlockPos origin = this.salmon.blockPosition();
@@ -348,11 +291,6 @@ public class SalmonDigGoal extends Goal {
         return null;
     }
 
-    /**
-     * On a failed scan, dumps the five nearest diggable blocks with what is on each of their faces.
-     * A count of rejections says nothing about <em>why</em>; this says it outright, so the next
-     * layout that defeats the rule is one log line away from being understood instead of guessed at.
-     */
     private void debugNearestRejections(Level level, BlockPos origin) {
         if (!DEBUG) {
             return;
@@ -384,25 +322,6 @@ public class SalmonDigGoal extends Goal {
         return block == Blocks.SAND || block == Blocks.GRAVEL || block == Blocks.MUD || block == Blocks.DIRT;
     }
 
-    /**
-     * Diggable means <em>the fish can get its snout on it</em>: water touching the top face or any
-     * of the four sides.
-     *
-     * <p>Both earlier versions were wrong in opposite directions, and each one produced a scan that
-     * found thousands of candidate blocks and accepted none.
-     *
-     * <ul>
-     *   <li>Horizontal-only failed on a real river: on a flat bed a block's
-     *       horizontal neighbours are more bed, so only the rim of the channel qualified.</li>
-     *   <li>Above-only failed on a dug-out tank: there the reachable faces are the <em>walls</em>,
-     *       whose top face is capped by more wall or by the surface layer, so nothing qualified
-     *       even with the fish swimming right against them.</li>
-     * </ul>
-     *
-     * <p>Either face alone is enough, so both layouts work. The old {@code isSource()} requirement
-     * is gone with them: flowing water is still water a fish can swim in, and demanding a full
-     * source block rejected any pool filled by letting a bucket spread.
-     */
     private static boolean isExposedBed(Level level, BlockPos pos) {
         if (isWater(level, pos.above())) {
             return true;
@@ -419,10 +338,6 @@ public class SalmonDigGoal extends Goal {
         return level.getFluidState(pos).is(FluidTags.WATER);
     }
 
-    /**
-     * Drops whatever {@code pos}'s substrate was hiding. Called from the dig clip's frame event, so
-     * it lives here beside the block list it belongs to rather than on the entity.
-     */
     public static void dropFor(ServerLevel level, BlockPos pos) {
         List<Item> pool = poolFor(level.getBlockState(pos).getBlock());
         if (pool.isEmpty()) {
@@ -439,13 +354,6 @@ public class SalmonDigGoal extends Goal {
                 pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D, drop));
     }
 
-    /**
-     * How often a dig turns up a relic instead of the substrate's ordinary contents.
-     *
-     * <p>Low on purpose. The fish digs on its own schedule with no player input, so this is a passive
-     * trickle, not a farm — at one in eight it stays a thing you notice happening rather than a thing
-     * you stand and wait for. Raise it if the dig turns out to be rarer in play than it looks here.
-     */
     private static final float RELIC_CHANCE = 0.125F;
 
     private static List<Item> poolFor(Block block) {

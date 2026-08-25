@@ -2,12 +2,6 @@ package net.darkblade.smop.entity.gt;
 
 import net.darkblade.deluxelib.entity.ai.cortex.StateEnum;
 
-/**
- * The Grand Tyrant's combat states.
- *
- * <p>The ids are explicit and stable because {@code CortexMonster} syncs the current state to the
- * client as an int.
- */
 public enum GTState implements StateEnum {
     WANDER(0),
     CHASE(1),

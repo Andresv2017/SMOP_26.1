@@ -13,59 +13,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.EnumSet;
 import java.util.List;
 
-/**
- * The wild-taming ritual: a krifto that finds rabbit meat a player dropped on the ground walks over
- * to it — landing first if it was flying, since it never eats mid-air — and bites it with the
- * {@code eating} clip. A {@link net.darkblade.smop.entity.tame.TameProgress} number of feedings later
- * (rolled 3 or 4 on the first bite) it tames to whoever threw the last one and plays {@code tamed}.
- *
- * <p>Replaces the old right-click-with-rabbit tame roll entirely; see
- * {@code KriftognathusEntity#mobInteract}. Progress is never lost on interruption — only the current
- * bite is — so a hit taken mid-{@code eating} just ends that one bite, not the ritual.
- *
- * <p><b>Priority.</b> Registered at the same priority as {@code FlightWanderGoal} (7) — tied, not just
- * below, because {@code WrappedGoal#canBeReplacedBy} only yields a locked flag on a strict {@code <},
- * so a tie is what stops this goal from stealing MOVE/LOOK back the instant it re-evaluates {@code
- * canUse()}. This goal never drives the descent itself: while flying it stands down entirely (see
- * {@link #canUse()}/{@link #canContinueToUse()}) so {@code FlightWanderGoal} is free to actually tick
- * and run its own {@code flightDurationTimer}-driven stoop into {@code beginLanding()} — the only code
- * path that does. An earlier version sat at priority 6 (strictly above FlightWanderGoal) and called
- * {@code requestLanding()} from mid-air while still holding the flags itself; that starved
- * FlightWanderGoal's {@code tick()} completely; per {@code requestLanding()}'s own contract ("the mob
- * keeps flying until that goal lets go"), the timer expiry was never noticed and Krifto hovered at
- * the item's ground-level position forever, never actually landing. See {@code FollowOwnerFlyingGoal}'s
- * class note for the mirror-image case (yielding to {@code TakeoffGoal} on the way up).
- */
 public class TameFeedGoal extends Goal {
 
     private static final double SEARCH_RADIUS = 16.0D;
-    /**
-     * Horizontal reach of the bite, added to the mob's own bounding box. This is vanilla's convention
-     * for a mob reaching a ground item — {@code Mob#ITEM_PICKUP_REACH}, the {@code Vec3i(1, 0, 1)}
-     * the loot pickup in {@code Mob#aiStep} inflates by — and not an arbitrary number.
-     *
-     * <p>A centre-to-centre distance check cannot work here.
-     * {@code PathNavigation#moveTo(x, y, z, speed)} hardcodes {@code reachRange = 1}, and
-     * {@code PathFinder} marks a target reached at {@code distanceManhattan(target) <= reachRange} —
-     * so the path legitimately ends a whole block short of the item's block, and the mob then parks
-     * there with navigation done and centre distance well past 1.5. Nothing ever closes the gap: the
-     * goal re-issues the same {@code moveTo} every tick, gets the same already-satisfied path, and
-     * waits forever — until something shoves the mob physically closer. Growing the bounding box
-     * instead measures from the mob's edge, so it scales with the mob (a baby krifto's box is
-     * smaller) and lines up with where the pathfinder actually leaves it standing.
-     */
     private static final double EAT_REACH = 1.0D;
-    /** Ticks before the next search after a bite that did not finish the ritual. */
     private static final int RETRY_COOLDOWN_TICKS = 40;
-    /**
-     * Walking speed of the approach. The same modifier {@code SMOPRandomStrollGoal} is registered
-     * with, so crossing the ground for a meal looks exactly like crossing it for nothing — which is
-     * the point: anything less reads as the mob dawdling toward food it supposedly wants.
-     */
     private static final double APPROACH_SPEED = 1.0D;
-    /** Ticks between re-paths while closing on the offering. @see #tick() */
     private static final int REPATH_INTERVAL_TICKS = 10;
-    /** Ticks of failing to reach the offering before giving up on it. @see #tick() */
     private static final int APPROACH_GIVE_UP_TICKS = 300;
 
     private final KriftognathusEntity mob;
@@ -74,9 +28,7 @@ public class TameFeedGoal extends Goal {
     private ItemEntity targetItem;
     private int cooldownUntilTick;
     private boolean biting;
-    /** Ticks spent closing on {@link #targetItem} without reaching it. @see #tick() */
     private int approachTicks;
-    /** Counts down to the next re-path. @see #tick() */
     private int repathCooldown;
 
     public TameFeedGoal(KriftognathusEntity mob) {
@@ -101,13 +53,6 @@ public class TameFeedGoal extends Goal {
                 && !this.mob.isFlying();
     }
 
-    /**
-     * Every tick, not every other one. The last stretch to the offering is steered by hand through
-     * {@code MoveControl#setWantedPosition} (see {@link #tick()}), and {@code Mob#serverAiStep} only
-     * runs the full goal selector on alternate ticks — so without this that steering, and the re-path
-     * countdown with it, run at half rate. Not wrong, but it is the other half of why the walk over
-     * looked sluggish.
-     */
     @Override
     public boolean requiresUpdateEveryTick() {
         return true;
@@ -189,12 +134,10 @@ public class TameFeedGoal extends Goal {
         }
     }
 
-    /** Close enough to bite — see {@link #EAT_REACH} for why this is a box test and not a distance. */
     private boolean inEatRange(ItemEntity item) {
         return this.mob.getBoundingBox().inflate(EAT_REACH, 0.0D, EAT_REACH).intersects(item.getBoundingBox());
     }
 
-    /** Consumes one unit of the meat, logs the feeding, and closes the ritual if that was the last one. */
     private void finishBite(ItemEntity item) {
         if (item.isRemoved() || item.getItem().isEmpty()) {
             this.targetItem = null;
@@ -221,14 +164,6 @@ public class TameFeedGoal extends Goal {
         this.cooldownUntilTick = this.mob.tickCount + RETRY_COOLDOWN_TICKS;
     }
 
-    /**
-     * The nearest player-thrown offering within {@link #SEARCH_RADIUS}, or {@code null}.
-     *
-     * <p>Static because {@code KriftognathusEntity} needs the same answer from outside the goal:
-     * while airborne this goal stands down entirely (see the class note), so it is not running to
-     * spot an offering, ask for the descent, and aim that descent at it. The entity does all three
-     * on its behalf, and both callers have to agree on what counts — hence one implementation.
-     */
     @Nullable
     public static ItemEntity findOffering(KriftognathusEntity mob) {
         List<ItemEntity> candidates = mob.level().getEntitiesOfClass(ItemEntity.class,

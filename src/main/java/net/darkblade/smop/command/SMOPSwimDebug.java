@@ -30,26 +30,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * {@code /smop debug swim} — dumps, for every SMOP mob within 48 blocks, the entire chain that has to
- * line up for an aquatic mob to actually move; {@code /smop debug swim watch} then samples the nearest
- * swimmer once a tick for three seconds.
- *
- * <p><b>Why this exists.</b> "It floats and does not swim" is a symptom with at least six independent
- * causes — the goal never firing, the navigator refusing to plot a path, the path existing but the
- * move control never being handed a speed, {@code travel} discarding it, water being scored as a
- * hazard, or the mob simply being considered idle — and they are indistinguishable from the outside.
- * Guessing between them cost several rounds on the Nirasmosaurus. Each line below is one link in that
- * chain, so the first one that reads wrong is the cause.
- *
- * <p><b>Species-agnostic on purpose.</b> It watches any {@link SMOPWaterAnimal}, prints the tilt only
- * for those that implement {@link SwimTilt}, and names whatever it picked so a sample taken with two
- * species in the water is not ambiguous. Every swimmer added from here on works with it as-is.
- *
- * <p>Print it for two species standing in the same pool: the one that swims is the control sample, and
- * the field where the two differ is the answer. That comparison is what this tool is for, so it is
- * worth keeping rather than deleting once any one mob is settled.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPSwimDebug {
 
@@ -69,27 +49,6 @@ public final class SMOPSwimDebug {
     private static @Nullable SMOPWaterAnimal watched;
     private static int watchLeft;
 
-    /**
-     * Samples every input the neck sees, once per tick, for three seconds.
-     *
-     * <p>A snapshot cannot answer "the head does not look smooth" — jitter is a time-domain problem
-     * and a single frame of it looks identical to a steady value. These are the numbers that compose
-     * on the neck, and reading them side by side over time is what shows which one is stepping:
-     *
-     * <ul>
-     *   <li>{@code xRot} — the entity pitch, which {@code AnimContext} feeds to the rig's
-     *       {@code lookAt} as the HEAD pitch. If it steps rather than glides, the neck steps with
-     *       it.</li>
-     *   <li>{@code netYaw} — {@code yHeadRot - yBodyRot}, the rig's look yaw. Sitting at exactly
-     *       {@code getMaxHeadYRot} for many ticks means the head is parked against its stop, not
-     *       looking at anything.</li>
-     *   <li>{@code yRot} — the steered body yaw. Runs of an identical delta mean the turn cap is
-     *       saturated; a delta that grows and shrinks in equal steps is the ramp doing its job.</li>
-     *   <li>{@code swimPitch} / {@code swimRoll} — whole-body tilt, applied outside the rig. Printed
-     *       as {@code --} for a swimmer that does not implement {@link SwimTilt}, which is a fact
-     *       about the mob rather than a failure to report.</li>
-     * </ul>
-     */
     private static int watch(CommandSourceStack source) {
         Vec3 at = source.getPosition();
         watched = source.getLevel()
@@ -224,7 +183,6 @@ public final class SMOPSwimDebug {
                 line("goals", running.isEmpty() ? "(none running)" : running));
     }
 
-    /** Species name without the mod prefix, e.g. {@code nirasmosaurus}. */
     private static String name(Mob mob) {
         String id = mob.getType().getDescriptionId();
         return id.substring(id.lastIndexOf('.') + 1);

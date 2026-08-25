@@ -11,15 +11,8 @@ import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-/**
- * Guards whichever matching nest is nearest — colonial species where any adult minds any clutch.
- *
- * <p>The search is a box scan, kept cheap by a shallow vertical range (nests sit on the ground) and
- * by only running when the goal is not already engaged.
- */
 public class ProtectNearestEggGoal extends ProtectEggBaseGoal {
 
-    /** Nests are on the ground, so there is no point scanning a tall column. */
     private static final int VERTICAL_SEARCH = 3;
 
     private final List<Supplier<? extends Block>> eggBlocks;

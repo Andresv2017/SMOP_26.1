@@ -11,14 +11,6 @@ import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Kriftognathus chick — a genuinely different skeleton from the adult, not a scaled copy. The bone
- * names now match the adult's (both dropped the {@code g} prefix), but the rig does not: the chick
- * has <b>no {@code calf} and no {@code claws} bones</b>. Its back leg is a single segment and its
- * feet are part of the leg. That is why the entity still picks its clip definition by age through a
- * supplier rather than sharing one set — an adult clip baked against this model throws on the first
- * missing bone, on the first frame the chick is rendered.
- */
 public class KriftoBabyModel extends EntityModel<DeluxeEntityRenderState> {
 
     public static final ModelLayerLocation LAYER_LOCATION =

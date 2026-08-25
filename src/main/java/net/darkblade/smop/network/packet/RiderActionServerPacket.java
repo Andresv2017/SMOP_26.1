@@ -8,19 +8,11 @@ import net.darkblade.deluxelib.network.Side;
 import net.darkblade.smop.entity.RiderControllable;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Client → server: the rider pressed one of the mount keybinds (see {@link RiderControllable}).
- *
- * <p>No entity id travels with it — the action always targets whatever the sender is currently
- * riding, which the server reads authoritatively from {@code player.getVehicle()}. That also makes
- * the packet unspoofable: a client cannot name a mount it is not on.
- */
 @PacketSide(side = Side.SERVER)
 public final class RiderActionServerPacket extends AbstractNetworkPacket<RiderActionServerPacket> {
 
     private RiderControllable.RiderAction action;
 
-    /** Required by the packet decoder — fields are filled in by {@link #read}. */
     public RiderActionServerPacket() {}
 
     public RiderActionServerPacket(RiderControllable.RiderAction action) {

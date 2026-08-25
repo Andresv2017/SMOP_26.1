@@ -301,26 +301,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── GOALS ─────
 
-    /**
-     * Flight goals go in via {@link #registerFlightGoals}: take-off at 2, <b>landing at 3</b>, flight
-     * wander at 7.
-     *
-     * <p>The landing goal sits that high on purpose. It holds MOVE, and so do the melee goal and the
-     * escort — put those above it and a mob that acquires a target (or an owner) mid-descent starves
-     * the landing goal of its flag and hangs in the landing state with nothing driving it down. A
-     * bird committed to a touchdown finishes it first. Take-off deliberately holds no flags at all,
-     * so the ground goals below keep running while it lifts off; {@link KriftoTakeoffGoal} also lets
-     * a live target skip the ground-rest timer, so a threat does not have to wait out a nap.
-     *
-     * <p>The melee goal sits at 4, <b>above</b> the flying escort at 5 — both hold MOVE, and without
-     * that ordering the escort would win every arbitration and a defending Krifto would just keep
-     * flying formation next to the owner instead of breaking off to bite whatever attacked them (the
-     * same ordering {@code OwlEntity} uses: {@code DefendOwnerGoal} at 1, above its own follow goal
-     * at 2). The escort takes over once the mob is in the air and asks for a take-off when it is not;
-     * {@link FollowOwnerBaseGoal} at 8 walks it over at close range on the ground. That one has to sit
-     * <b>above</b> the stroll goal, or wandering would win every arbitration and the mob would never
-     * actually follow on foot.
-     */
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
@@ -379,7 +359,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         this.targetSelector.addGoal(3, new HurtByTargetGoal(this));
     }
 
-    /** Held so the navigation swap can tell it to re-read {@link #getNavigation()}. */
     @Nullable
     private FollowOwnerBaseGoal followOwnerOnFoot;
 
@@ -392,7 +371,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
 
     // ───────────────────────────────────────────────────── FLIGHT ─────
 
-    /** The chick's pterosaur parents circle low over their nesting ground rather than soaring. */
     @Override
     protected double getMinFlightAltitude() {
         return 6.0D;
@@ -428,28 +406,16 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return 0.09D;
     }
 
-    /**
-     * Scaled from Arpy's own tuning (0.45 on a 1.4-block-tall hitbox, i.e. ~32% of its own height)
-     * rather than copied outright: Arpy's value applied unscaled to Krifto's 1.0-block hitbox
-     * ({@link net.darkblade.smop.entity.SMOPEntities#KRIFTOGNATHUS}) left the landing flare
-     * kicking in over a block and a half up — more than Krifto's whole body height — which read
-     * as hovering well short of the ground on a bird this small. 1.0 * (0.45 / 1.4) ≈ 0.32.
-     */
     @Override
     protected double getLandingApproachAltitude() {
         return 0.32D;
     }
 
-    /** The authored {@code start_flight} already owns the pose — the physics nose-up would stack. */
     @Override
     protected boolean applyTiltDuringTakeoff() {
         return false;
     }
 
-    /**
-     * Long enough for the 1.3 s {@code landing} clip plus the glide it is played over. This is a
-     * safety net, not the intended exit: {@link KriftoLandingGoal} completes on ground contact.
-     */
     @Override
     protected int getMaxLandingTicks() {
         return Math.max(60, this.clipDurationTicks(ANIM_LANDING) * 3);
@@ -465,13 +431,7 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         return new KriftoLandingGoal();
     }
 
-    /** Holds the take-off phase open for exactly as long as the {@code start_flight} clip runs. */
     private class KriftoTakeoffGoal extends TakeoffGoal {
-        /**
-         * A live target skips the ground-rest timer, same as {@code ArpyTakeoffGoal} in DeluxeLib —
-         * without this, a Krifto standing guard on the ground only launches to defend once its nap
-         * happens to run out, which reads as not defending at all.
-         */
         @Override
         public boolean canUse() {
             if (super.canUse()) {
@@ -497,11 +457,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
-    /**
-     * Ground contact still ends the landing — a bird that has touched down is down, whatever the
-     * clip thinks — but a mob that has not touched anything yet holds the phase until the
-     * {@code landing} clip finishes, so the flare is never cut off mid-gesture.
-     */
     private class KriftoLandingGoal extends LandingGoal {
         @Override
         protected boolean shouldCompleteLanding() {
@@ -510,46 +465,15 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
         }
     }
 
-    /**
-     * The melee goal, with the airborne half of the chase flown rather than pathed.
-     *
-     * <p><b>Why.</b> {@code MeleeAttackGoal} pursues by {@code getNavigation().moveTo(target, speed)}.
-     * On foot that is exactly right. In the air it means {@code SmartFlyingNavigation} pathfinds a
-     * polyline through 3D air nodes and the mob then flies that polyline — so it corners around
-     * waypoints instead of cutting the straight line, re-plans on a 4-20 tick timer while the target
-     * keeps moving, and stair-steps between nodes. That is the clumsy, sluggish pursuit; DeluxeLib's
-     * own {@code steerTowards} note calls out the same "stair-step bouncing that flying path
-     * navigation causes", and the Owl's dive attack sidesteps it by never pathing at all.
-     *
-     * <p><b>How.</b> {@code super.tick()} still runs in full — it owns the look-at, the attack
-     * interval, the cooldown and {@code checkAndPerformAttack}, and its counters are private, so
-     * skipping it would let the Krifto attack exactly once. What changes is only what happens after:
-     * while flying, the path it just built is discarded and the mob is steered straight at the target
-     * instead. Dropping the path is what keeps {@code SmoothFlyingMoveControl} out of the way — with
-     * no path, {@code PathNavigation#tick} never calls {@code setWantedPosition}, and that control
-     * flips itself back to {@code WAIT} after a single tick rather than fighting the velocity written
-     * here.
-     */
     private class KriftoAttackGoal extends AnimatableMeleeAttackGoal {
 
-        /** Blocks per tick of the air chase. Well over cruise: this is a stoop, not a commute. */
         private static final double CHASE_FLY_SPEED = 0.85D;
-        /** Heading blend per tick. High enough to stay glued to a dodging target without snapping. */
         private static final double CHASE_ACCEL = 0.35D;
 
         KriftoAttackGoal(double groundSpeed) {
             super(KriftognathusEntity.this, groundSpeed, true);
         }
 
-        /**
-         * {@code attackCondition(target -> !isBaby())} above only reaches as far as
-         * {@code checkAndPerformAttack} — it silences the bite, not the goal. Left alone, a baby
-         * with a target (owner got hit, owner's target, its own attacker — none of the
-         * {@code targetSelector} goals check age either) still runs every tick of the chase this
-         * goal drives, right up to biting range, and simply never bites. From the outside that reads
-         * as "the baby is attacking", just with the swing missing — not as "the baby is not
-         * fighting", which is what babies not fighting should look like.
-         */
         @Override
         public boolean canUse() {
             return !KriftognathusEntity.this.isBaby() && super.canUse();
@@ -560,11 +484,6 @@ public class KriftognathusEntity extends SMOPFlyingAnimal
             return !KriftognathusEntity.this.isBaby() && super.canContinueToUse();
         }
 
-        /**
-         * Every tick, not every other one. {@code Mob#serverAiStep} only runs the full goal selector
-         * on alternate ticks; without this the steering below writes velocity at 10 Hz against 20 Hz
-         * physics and the chase visibly stutters between corrections.
-         */
         @Override
         public boolean requiresUpdateEveryTick() {
             return true;

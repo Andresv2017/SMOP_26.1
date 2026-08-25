@@ -14,30 +14,10 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
-/**
- * The theft: a wild adult Krifto already cruising spots an unwary player, circles them once at a wide
- * radius, then makes a single continuous pass — {@code swoop} in, take a random hotbar slot at the
- * closest point, and climb straight out along the same line, dropping the loot once it is clear.
- *
- * <p>Deliberately one unbroken movement. There is no pause on top of the victim to play a grab
- * animation: the authored {@code steal} clip is not used, and the {@code swoop} started at the top of
- * the dive runs across the whole pass. A raptor does not stop mid-strike, and stopping here also
- * destroyed the through-line the escape depends on (see {@link #tickFlee}).
- *
- * <p>Never requests a take-off for this — it only ever engages while already flying. {@code
- * TameFeedGoal}'s class note covers why a goal that needs the flight lifecycle to cooperate is
- * dangerous to get wrong; this goal sidesteps that class of bug by never asking the lifecycle for
- * anything. What it does need is to not fight {@code TakeoffGoal}/{@code LandingGoal} for MOVE/LOOK
- * while they are running, so — like {@code FollowOwnerFlyingGoal} — it is registered strictly below
- * both (a larger priority number) so they can always steal the flag back, and it stands down on its
- * own via {@link #flightSettled()} rather than relying purely on being forced off.
- */
 public class StealFromPlayerGoal extends Goal {
 
     private static final double SEARCH_RADIUS = 16.0D;
-    /** One-in-N chance per eligible tick — an event, not a tax. @see #canUse() */
     private static final int ATTEMPT_CHANCE = 100;
-    /** Minutes-scale, per mob, after a heist ends however it ends. */
     private static final int STEAL_COOLDOWN_TICKS = 20 * 60 * 5;
 
     private static final double ORBIT_RADIUS = 7.0D;
@@ -46,27 +26,14 @@ public class StealFromPlayerGoal extends Goal {
     private static final int ORBIT_DURATION_TICKS = 100;
 
     private static final double DIVE_ARRIVAL_SQ = 2.0D * 2.0D;
-    /** Safety net: the victim outflew the dive (or simply ran indoors). */
     private static final int DIVE_GIVE_UP_TICKS = 200;
 
     private static final double FLEE_DISTANCE = 25.0D;
     private static final double FLEE_DISTANCE_SQ = FLEE_DISTANCE * FLEE_DISTANCE;
-    /**
-     * Height above the victim the escape climbs to. Comfortably over
-     * {@code KriftognathusEntity#getMinFlightAltitude()} (6), so the mob ends the heist back at a
-     * believable cruising height instead of at the altitude the dive left it.
-     */
     private static final double FLEE_CLIMB_HEIGHT = 10.0D;
-    /** Safety net if the victim somehow keeps pace forever. */
     private static final int FLEE_GIVE_UP_TICKS = 400;
 
     private final KriftognathusEntity mob;
-    /**
-     * Position gain and damping are {@code FollowOwnerFlyingGoal}'s proven pair — that class's note
-     * explains why they are not independent knobs, and detuning them was making the approach ring.
-     * Only the speed cap is raised over the escort's, so a heist reads as faster without the flight
-     * itself becoming less stable.
-     */
     private final OrbitFlightController controller = new OrbitFlightController(0.04D, 0.4D, 0.6D, 10.0F);
 
     private enum Phase { ORBIT, DIVE, FLEE }
@@ -77,7 +44,6 @@ public class StealFromPlayerGoal extends Goal {
     private float orbitAngle;
     private int phaseTicks;
     private int cooldownUntilTick;
-    /** Horizontal heading of the dive, held so the escape carries through it. @see #tickFlee */
     private Vec3 stoopHeading = Vec3.ZERO;
 
     public StealFromPlayerGoal(KriftognathusEntity mob) {
@@ -107,17 +73,10 @@ public class StealFromPlayerGoal extends Goal {
                 && this.mob.isFlying() && this.flightSettled();
     }
 
-    /** Same purpose as {@code FollowOwnerFlyingGoal}'s — see that class for why it matters. */
     private boolean flightSettled() {
         return !this.mob.isTakingOff() && !this.mob.isLanding();
     }
 
-    /**
-     * Every tick, not every other one. {@code Mob#serverAiStep} only runs the full goal selector on
-     * alternate ticks and gives the rest to {@code tickRunningGoals(false)}, which skips any goal
-     * that does not ask for this — so without it the PD loop below writes velocity at 10 Hz while
-     * the physics integrates at 20, and the flight visibly stutters between corrections.
-     */
     @Override
     public boolean requiresUpdateEveryTick() {
         return true;
@@ -202,28 +161,11 @@ public class StealFromPlayerGoal extends Goal {
         }
     }
 
-    /**
-     * The grab: instantaneous, at the closest point of the pass. There is no clip and no hold — the
-     * whole heist is one continuous stoop that carries through into the climb-out, so pausing on top
-     * of the victim to play something would break the very line {@link #tickFlee} exists to preserve.
-     * The {@code swoop} started back at the dive is still running over all of this.
-     */
     private void performSnatch(Player victim) {
         ItemStack taken = takeRandomHotbarStack(victim);
         this.mob.setStolenItem(taken);
     }
 
-    /**
-     * Carries the stoop through and climbs out of it, the way a raptor leaves a strike — straight on
-     * along {@link #stoopHeading}, gaining height.
-     *
-     * <p>Two earlier versions of this were wrong in different ways. Fleeing along the raw 3D vector
-     * from victim to mob skimmed the ground, because the dive has just put the mob at the player's own
-     * height and that vector is nearly flat. Fleeing along the <em>horizontal</em> version of it fixed
-     * the altitude but pointed backwards: right after the snatch the mob is on top of the victim, so
-     * "away from the victim" is the direction it just came from, and the escape read as reversing out.
-     * Holding the dive's own heading is what makes it read as one continuous pass.
-     */
     private void tickFlee(Player victim) {
         Vec3 heading = this.stoopHeading;
         Vec3 fleeTarget = new Vec3(
@@ -242,7 +184,6 @@ public class StealFromPlayerGoal extends Goal {
         }
     }
 
-    /** Unit vector in the XZ plane, falling back to +X for a degenerate input. */
     private static Vec3 horizontalDirection(double dx, double dz) {
         double length = Math.sqrt(dx * dx + dz * dz);
         if (length < 1.0E-4D) {
@@ -251,7 +192,6 @@ public class StealFromPlayerGoal extends Goal {
         return new Vec3(dx / length, 0.0D, dz / length);
     }
 
-    /** Bails without paying out — used when the dive drags on too long to ever connect. */
     private void abortHeist() {
         this.mob.setStolenItem(ItemStack.EMPTY);
         this.victim = null;
@@ -266,7 +206,6 @@ public class StealFromPlayerGoal extends Goal {
         this.mob.setStolenItem(ItemStack.EMPTY);
     }
 
-    /** Empties a random non-empty hotbar slot into the returned stack, whole. {@link ItemStack#EMPTY} if none. */
     private static ItemStack takeRandomHotbarStack(Player victim) {
         List<Integer> occupied = new ArrayList<>();
         for (int slot = 0; slot < Inventory.getSelectionSize(); slot++) {

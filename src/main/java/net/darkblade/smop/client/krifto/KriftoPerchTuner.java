@@ -12,38 +12,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
-/**
- * Live, in-game tuner for where the perched Kriftognathus sits — perch it with a right-click, run
- * {@code /smop debug kriftoperch}, nudge with the NUMPAD until it sits right over your head, then
- * paste the printed constants into {@link KriftoPerchPlacement}. Client-side only, local player only,
- * not persisted. Built on DeluxeLib's {@link NumpadAxisTuner}, the same skeleton {@code OwlPerchTuner}
- * uses.
- *
- * <p>Only two of the four modes the owl's tuner has are here: this creature's host pose comes from
- * {@code KriftognathusRenderer}'s {@code PerchPoseHandler} rather than the placement's arm angles, and
- * it opts out of first-person rendering entirely — so ARM, FP_POS and FP_ROT would all tune values
- * nothing reads. What is left is where it sits and how big it is.
- *
- * <p><b>Tuning moves the visual, not the hitbox.</b> This override is client-side while the server
- * places the real position from its own read of the compiled constants, so during a session the drawn
- * bird and its actual position drift apart until you paste the numbers back. Expected for a debug
- * tool — same caveat as every other tuner in the library.
- *
- * <p>Numpad controls while active (and perched):
- * <ul>
- *   <li>{@code 5} — switch between POS mode (where it sits) and SCALE mode</li>
- *   <li>POS: {@code 8}/{@code 2} forward/back, {@code 4}/{@code 6} right/left, {@code 9}/{@code 3}
- *       up/down</li>
- *   <li>SCALE: {@code 9}/{@code 3} bigger/smaller</li>
- *   <li>{@code 0} — print the current values as ready-to-paste constants</li>
- *   <li>{@code .} — reset back to the values compiled into {@link KriftoPerchPlacement}</li>
- * </ul>
- */
 public final class KriftoPerchTuner extends NumpadAxisTuner {
 
     private static final KriftoPerchTuner INSTANCE = new KriftoPerchTuner();
 
-    /** Blocks per nudge — fine enough to land a bird on a head without a dozen presses per block. */
     private static final float POS_STEP = 0.02F;
     private static final float SCALE_STEP = 0.05F;
 
@@ -59,8 +31,6 @@ public final class KriftoPerchTuner extends NumpadAxisTuner {
 
     private KriftoPerchTuner() {}
 
-    /** Toggles the tuner, installing or clearing its live override on {@link KriftoPerchPlacement} so
-     *  the render path picks the values up (or stops seeing them). */
     public static boolean toggle() {
         INSTANCE.active = !INSTANCE.active;
         KriftoPerchPlacement.setOverride(INSTANCE.active ? KriftoPerchTuner::placement : null);
@@ -71,7 +41,6 @@ public final class KriftoPerchTuner extends NumpadAxisTuner {
         return INSTANCE.active;
     }
 
-    /** Drops every override, so the next read re-seeds from the compiled constants. */
     public static void reset() {
         INSTANCE.resetValues();
     }
@@ -80,9 +49,6 @@ public final class KriftoPerchTuner extends NumpadAxisTuner {
         INSTANCE.handleInput(key, action);
     }
 
-    /** The values as the library consumes them. A fresh record per call, since any of them can change
-     *  between frames; the unused arm/first-person groups are passed straight through from the
-     *  compiled placement. */
     public static PerchPlacement placement() {
         PerchPlacement base = KriftoPerchPlacement.compiled();
         return new PerchPlacement(
@@ -142,8 +108,6 @@ public final class KriftoPerchTuner extends NumpadAxisTuner {
         return this.mode == Mode.POS ? nudgePos(key) : nudgeScale(key);
     }
 
-    /** Same axis layout and key order as {@code OwlPerchTuner}'s OWL mode, deliberately — these tools
-     *  are used back to back and muscle memory should carry over. */
     private boolean nudgePos(int key) {
         return nudge(key,
                 new KeyAxis(GLFW.GLFW_KEY_KP_2, GLFW.GLFW_KEY_KP_8, POS_STEP, d -> this.forward = forward() + d),

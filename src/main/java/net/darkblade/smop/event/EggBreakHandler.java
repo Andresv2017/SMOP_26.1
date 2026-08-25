@@ -14,17 +14,9 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 
 import java.util.List;
 
-/**
- * Tells nearby guarding mobs when a nest is destroyed by a player.
- *
- * <p>Routed through an event rather than the block itself because the reaction belongs to the AI,
- * not the block: the same egg block is guarded by different species with different tempers, and a
- * block has no way to reach into a mob's goal list on its own.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class EggBreakHandler {
 
-    /** How far the news of a broken nest travels. */
     private static final double NOTIFY_RADIUS = 10.0D;
 
     @SubscribeEvent

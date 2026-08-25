@@ -11,11 +11,6 @@ import net.minecraft.client.model.geom.builders.*;
 import net.darkblade.smop.SMOP;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Baby Tangoftero — a separate Blockbench export, not a scaled adult. Its skeleton is genuinely
- * smaller (no {@code tail_tip}, {@code epiglotis} or {@code muscles}), which is why the entity feeds
- * baby-specific clips to the animator rather than reusing the adult set.
- */
 public class TangoBabyModel extends EntityModel<DeluxeEntityRenderState> {
 
     public static final ModelLayerLocation LAYER_LOCATION =

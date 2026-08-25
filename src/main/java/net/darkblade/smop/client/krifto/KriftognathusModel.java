@@ -11,20 +11,6 @@ import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Adult Kriftognathus. Geometry is the untouched Blockbench export; what changed in the port is that
- * {@code setupAnim} no longer hand-drives a dozen {@code AnimationState}s — the {@link Rig} resets
- * the pose, blends whatever the {@code MobAnimator} says is playing, and layers head tracking on top.
- *
- * <p>The look-at goes on the neck rather than the head: this is a long-necked animal, and turning
- * only the skull reads as the head swivelling independently of the body.
- *
- * <p><b>Bone naming.</b> This export dropped the {@code g} prefix the previous one carried
- * ({@code gPiglug} → {@code piglug}), and renamed the misspelled {@code gHGead} to {@code head}. Every
- * clip in {@code KriftoAnimations} addresses bones by name at bake time and throws
- * {@code IllegalArgumentException} on a name this mesh does not define, so the two files have to agree
- * exactly — there is no partial match and no fallback.
- */
 public class KriftognathusModel extends EntityModel<DeluxeEntityRenderState> {
 
     public static final ModelLayerLocation LAYER_LOCATION =
@@ -43,12 +29,6 @@ public class KriftognathusModel extends EntityModel<DeluxeEntityRenderState> {
                     .build();
 
     public final ModelPart neck;
-    /**
-     * The chain a talon-attached render layer has to walk by hand to land in the right spot — see
-     * {@link StolenItemLayer}. {@code legs} sits at a permanent zero offset today (nothing ever
-     * animates it), but it is exposed and walked anyway rather than skipped: skipping it silently
-     * relies on that staying true forever.
-     */
     public final ModelPart piglug;
     public final ModelPart legs;
     public final ModelPart backLegs;

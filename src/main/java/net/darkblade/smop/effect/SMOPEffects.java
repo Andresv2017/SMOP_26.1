@@ -7,7 +7,6 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-/** Mob effect registry. */
 public final class SMOPEffects {
 
     public static final DeferredRegister<MobEffect> EFFECTS =

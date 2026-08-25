@@ -11,20 +11,6 @@ import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Adult Nirasmosaurus, a marine reptile. Geometry is the raw Blockbench export; {@code setupAnim}
- * hands the pose to the {@link Rig}, which resets it, blends whatever the {@code MobAnimator} says is
- * playing and layers head tracking on top — the same shape every other SMOP mob uses.
- *
- * <p><b>Bone naming.</b> Every clip addresses bones by name at bake time and 26.1 <em>throws</em> on a
- * name this mesh does not define — no partial match, no fallback. The names come straight from the
- * export, Hungarian {@code g} prefixes and the misspelled {@code gTroath} included: renaming them
- * would mean editing thousands of keyframe lines for no functional gain, and a rename that misses one
- * channel fails at render time rather than at compile time.
- *
- * <p>The look-at drives {@code gNeck} rather than {@code gHead}: on a long-necked animal, swivelling
- * only the skull reads as the head moving independently of the body.
- */
 public class NirasmosaurusModel extends EntityModel<DeluxeEntityRenderState> {
 
     public static final ModelLayerLocation LAYER_LOCATION =

@@ -46,57 +46,17 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * {@code /smop debug spawn} — why a SMOP mob is or is not appearing, answered with counts instead of
- * theories.
- *
- * <p><b>Why this exists.</b> A natural spawn has to clear roughly a dozen independent gates, spread
- * across {@code NaturalSpawner}, {@code SpawnPlacements}, the biome data and the entity itself, and
- * from inside the game they are indistinguishable: the mob simply is not there. Worse, most of them
- * are invisible to NeoForge's events — only {@code SpawnPlacementCheck} and {@code PositionCheck} fire
- * at all, and both sit near the END of the chain, so a mob rejected early produces no signal of any
- * kind. Diagnosing the Nirasmosaurus by reasoning about which gate "must" be the one cost several
- * rounds of being confidently wrong.
- *
- * <p>Three subcommands, in the order they are worth running:
- *
- * <ul>
- *   <li>{@code state} — the live numbers the spawner is working from right now: the category caps and
- *       how full they are, the biome's spawner pool where you are standing, and how far away the next
- *       CREATURE spawn tick is. Cheap, instant, and rules out the whole-category failures.</li>
- *   <li>{@code sim [passes]} — replays {@code NaturalSpawner}'s algorithm over the loaded chunks
- *       around you and tallies which gate each attempt died at. Nothing is added to the world. One
- *       pass is one sweep of every spawnable chunk, which is what CREATURE gets every 400 ticks, so
- *       the default of 15 passes is about five minutes of real play.</li>
- *   <li>{@code watch [seconds]} — passive counters on the REAL pipeline, via the two events that do
- *       fire. Confirms that what {@code sim} reports is also what the running server does.</li>
- * </ul>
- *
- * <p>The simulation deliberately mirrors {@code NaturalSpawner#spawnCategoryForChunk} and
- * {@code #isValidSpawnPostitionForType} gate for gate, in the same ORDER, because the order is load
- * bearing — the placement type is consulted before the entity's own rule, which is the whole reason a
- * shoreline rule under an {@code IN_WATER} placement was dead code. Two knowing departures from the
- * original, both of which only ever make the simulation stricter or equal:
- * {@code isRightDistanceToPlayerAndSpawnPoint}'s respawn-anchor clause is reduced to the 24-block
- * player check, and {@code isValidPositionForMob} calls {@code checkSpawnRules}/
- * {@code checkSpawnObstruction} directly rather than through NeoForge's hook, which is what that hook
- * resolves to when nothing overrides it.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPSpawnDebug {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("SMOPSpawnDebug");
 
-    /** {@code NaturalSpawner.MAGIC_NUMBER}, private there: 17 squared, the chunks in a spawn square. */
     private static final int MAGIC_NUMBER = 17 * 17;
 
-    /** {@code NaturalSpawner.SPAWN_DISTANCE_CHUNK} — the radius of that square. */
     private static final int SPAWN_RADIUS_CHUNKS = 8;
 
-    /** Ticks between CREATURE spawn attempts, from {@code ServerChunkCache}'s {@code % 400L} test. */
     private static final int CREATURE_PERIOD = 400;
 
-    /** One pass over every spawnable chunk ~= one CREATURE cycle, so 15 ~= five minutes. */
     private static final int DEFAULT_PASSES = 15;
 
     static LiteralArgumentBuilder<CommandSourceStack> build() {
@@ -172,16 +132,6 @@ public final class SMOPSpawnDebug {
         return 1;
     }
 
-    /**
-     * How many SMOP mobs are alive in the level, and how many of those are counted against the cap.
-     *
-     * <p>The distinction is the whole point. {@code NaturalSpawner#createState} skips mobs that are
-     * {@code isPersistenceRequired()}, so a tamed or named animal is free; everything else is charged
-     * to its category's global budget. And SMOP's animals descend from {@code Animal}, whose
-     * {@code removeWhenFarAway} returns {@code false} — they never despawn. A population that only ever
-     * grows and is counted against a fixed cap will eventually close its own category, which is a
-     * failure that looks like "the mob stopped spawning" in a completely different biome.
-     */
     private static String census(ServerLevel level) {
         Object2IntLinkedOpenHashMap<String> counted = new Object2IntLinkedOpenHashMap<>();
         Object2IntLinkedOpenHashMap<String> free = new Object2IntLinkedOpenHashMap<>();
@@ -215,7 +165,6 @@ public final class SMOPSpawnDebug {
         return sb.toString();
     }
 
-    /** The water band in this column, which is what the uniform Y roll has to land inside. */
     private static String waterColumn(ServerLevel level, BlockPos at) {
         int surface = level.getHeight(Heightmap.Types.WORLD_SURFACE, at.getX(), at.getZ()) + 1;
         int floor = level.getMinY();
@@ -242,10 +191,6 @@ public final class SMOPSpawnDebug {
 
     // ───────────────────────────────────────────────────── SIM ─────
 
-    /**
-     * The gates, declared in the order {@code NaturalSpawner} consults them. Reported in this order
-     * too: the first row with a large count is where the animal is dying.
-     */
     private enum Gate {
         CAP_GLOBAL("category cap full (global)"),
         CAP_LOCAL("category cap full (local, approx)"),
@@ -393,11 +338,6 @@ public final class SMOPSpawnDebug {
         return 1;
     }
 
-    /**
-     * One {@code spawnCategoryForPosition} attempt, cut short at the first gate that refuses. Only the
-     * first member of the first group is simulated: the point is WHICH gate refuses, and every member
-     * after the first passes through the same ones.
-     */
     private static Gate attemptAt(ServerLevel level, LevelChunk chunk, BlockPos start,
                                   MobCategory category, EntityType<?> watched, RandomSource random) {
         double xx = start.getX() + 0.5;
@@ -453,18 +393,12 @@ public final class SMOPSpawnDebug {
         return ok ? Gate.SPAWNED : Gate.POSITION_CHECK;
     }
 
-    /** The biome's pool for a category at a position, biome modifiers and structures already applied. */
     private static WeightedList<MobSpawnSettings.SpawnerData> poolAt(ServerLevel level, Holder<Biome> biome,
                                                                     MobCategory category, BlockPos pos) {
         return level.getChunkSource().getGenerator()
                 .getMobsAt(biome, level.structureManager(), category, pos);
     }
 
-    /**
-     * Approximates {@code LocalMobCapCalculator}, whose per-player counts live on a private field of
-     * the {@code SpawnState}. It counts the same thing the real one does — non-persistent mobs of the
-     * category in chunks within spawn range — just measured from one position instead of per player.
-     */
     private static int approxLocalCount(ServerLevel level, BlockPos origin, MobCategory category) {
         int radius = SPAWN_RADIUS_CHUNKS * 16;
         int count = 0;
@@ -512,7 +446,6 @@ public final class SMOPSpawnDebug {
         return type == SMOPEntities.NIRASMOSAURUS.get() || type == SMOPEntities.SALMON.get();
     }
 
-    /** Gate G5 — the only pre-spawn gate NeoForge exposes. Fires for every {@code checkSpawnRules}. */
     @SubscribeEvent
     public static void onPlacementCheck(MobSpawnEvent.@NotNull SpawnPlacementCheck event) {
         if (watchTicksLeft <= 0 || !ours(event.getEntityType())) {
@@ -527,7 +460,6 @@ public final class SMOPSpawnDebug {
                 event.getPos().toShortString(), event.getSpawnType(), event.getPlacementCheckResult());
     }
 
-    /** Gate I — after placement and rules, immediately before the mob is added. */
     @SubscribeEvent
     public static void onPositionCheck(MobSpawnEvent.@NotNull PositionCheck event) {
         if (watchTicksLeft <= 0 || !ours(event.getEntity().getType())) {
@@ -545,7 +477,6 @@ public final class SMOPSpawnDebug {
                 (int) event.getX(), (int) event.getY(), (int) event.getZ(), event.getSpawnType(), dflt);
     }
 
-    /** The spawn actually happening, with the reason so world-gen and the cycle can be told apart. */
     @SubscribeEvent
     public static void onFinalizeSpawn(@NotNull FinalizeSpawnEvent event) {
         if (watchTicksLeft <= 0 || !ours(event.getEntity().getType())) {

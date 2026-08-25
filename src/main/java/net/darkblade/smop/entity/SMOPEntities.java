@@ -17,7 +17,6 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-/** Entity type registry. */
 public final class SMOPEntities {
 
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
@@ -51,10 +50,6 @@ public final class SMOPEntities {
                             .clientTrackingRange(10)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("hell_hippo"))));
 
-    /**
-     * 3.0 long and 1.6 tall: one AABB, not a multipart hitbox — {@code PartEntity} support does not
-     * exist in DeluxeLib yet.
-     */
     public static final DeferredHolder<EntityType<?>, EntityType<NirasmosaurusEntity>> NIRASMOSAURUS =
             ENTITY_TYPES.register("nirasmosaurus",
                     // WATER_CREATURE. This has now been wrong twice in opposite directions, so the
@@ -102,18 +97,6 @@ public final class SMOPEntities {
                             .clientTrackingRange(10)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("nirasmosaurus"))));
 
-    /**
-     * The Grand Tyrant: 3.2 wide, 6.2 tall, one AABB.
-     *
-     * <p>One AABB and not a multipart hitbox: {@code PartEntity} support still does not exist in
-     * DeluxeLib. Until it does, hitting the tail counts as hitting the head.
-     *
-     * <p>{@code clientTrackingRange(16)} rather than the 10 the other large mobs use: a six-block
-     * animal you cannot see coming is a jump-scare, not a boss.
-     *
-     * <p>{@code MobCategory.CREATURE} by explicit decision: the category is permanently saturated, so
-     * confirm in game before changing it.
-     */
     public static final DeferredHolder<EntityType<?>, EntityType<GTEntity>> GT =
             ENTITY_TYPES.register("gt",
                     () -> EntityType.Builder.<GTEntity>of(GTEntity::new, MobCategory.CREATURE)
@@ -121,23 +104,6 @@ public final class SMOPEntities {
                             .clientTrackingRange(16)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("gt"))));
 
-    /**
-     * The Tangoftero's arrow.
-     *
-     * <p>Not a mob, so the numbers come from vanilla's own {@code EntityType.ARROW} rather than from
-     * anything in this file: 0.5 cubed, eye height 0.13, a tracking range of 4 and — the one that
-     * matters — {@code updateInterval(20)}. An arrow's flight is dead reckoning on the client, so it
-     * needs a position packet twenty times less often than a walking animal; leaving the default of 3
-     * would put three times the traffic on the wire for a projectile that lives two seconds.
-     *
-     * <p><b>{@code noLootTable()} is deliberately absent</b>, though vanilla's arrow carries it. It
-     * cannot be used here: {@code DeluxeEntityLootSubProvider} hands an empty table to every entity in
-     * the register, and {@code EntityLootSubProvider#add} resolves the default loot table key with
-     * {@code orElseThrow}. Declaring this arrow table-less would abort {@code runDataServer} rather
-     * than skip it. The cost of leaving it out is one three-line generated file that nothing reads,
-     * because loot is only ever rolled for a {@code LivingEntity}. Fixing it properly means teaching
-     * DeluxeLib's provider to skip table-less types, which belongs in DeluxeLib.
-     */
     public static final DeferredHolder<EntityType<?>, EntityType<TangoArrowEntity>> TANGO_ARROW =
             ENTITY_TYPES.register("tango_arrow",
                     () -> EntityType.Builder.<TangoArrowEntity>of(TangoArrowEntity::new, MobCategory.MISC)
@@ -147,10 +113,6 @@ public final class SMOPEntities {
                             .updateInterval(20)
                             .build(ResourceKey.create(Registries.ENTITY_TYPE, SMOP.id("tango_arrow"))));
 
-    /**
-     * The thrown Nirasmosaurus spear. Sized and tracked like vanilla's thrown trident rather than
-     * like the arrow above — it is a heavier, slower thing and its 0.25 hitbox is the trident's.
-     */
     public static final DeferredHolder<EntityType<?>, EntityType<NirasSpearEntity>> NIRAS_SPEAR =
             ENTITY_TYPES.register("niras_spear",
                     () -> EntityType.Builder.<NirasSpearEntity>of(NirasSpearEntity::new, MobCategory.MISC)

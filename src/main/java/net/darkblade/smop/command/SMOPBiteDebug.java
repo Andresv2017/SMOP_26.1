@@ -34,27 +34,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * {@code /smop debug bite} — why a hunt does not connect.
- *
- * <p><b>Why a third watcher, beside swim and nest.</b> Those two follow their own chains and are good
- * at them. A hunt is a fourth chain that happens to run on the same animals: something has to be
- * marked, a path has to exist to it, the body has to come round onto it, the animal has to arrive
- * rather than park, and only then does a window open where the jaws are. Every one of those links
- * failed at least once in 1c, and all five failed with the same symptom from outside — the animal is
- * clearly interested and nothing lands.
- *
- * <p><b>The three distances are printed separately, and that is the point.</b> Three different pieces
- * of code test three different things and it is invisible which one is refusing: {@code reach}
- * measures centre to centre in 3D, {@code stopDistance} measures the HORIZONTAL only, and the
- * navigation cut-off additionally wants the vertical gap under 1.5. An animal hovering above its prey
- * satisfies one, fails another, and looks simply broken.
- *
- * <p><b>And the two yaws, because they are not the same field.</b> {@code yBodyRot} is written by the
- * MoveControl and turns at the swim control's rate; {@code yHeadRot} is written by the LookControl and
- * tracks the target. A bite aimed off the wrong one fires into open water while the head visibly
- * points at the prey — which is not something a player can see, and is exactly what happened.
- */
 @EventBusSubscriber(modid = SMOP.MOD_ID)
 public final class SMOPBiteDebug {
 
@@ -76,10 +55,6 @@ public final class SMOPBiteDebug {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("smop-bite");
 
-    /**
-     * One hunter's last known position along the chain. Compared each tick; only <b>changes</b> are
-     * reported, except for the swing, which is a single-tick event and is always worth a line.
-     */
     private record Stage(int targetId, boolean chasing, boolean navDone, boolean swinging,
                          boolean mobInWater, boolean targetInWater, boolean pathNull) {}
 
@@ -203,16 +178,6 @@ public final class SMOPBiteDebug {
         }
     }
 
-    /**
-     * Called from each bite's {@link net.darkblade.deluxelib.combat.HitWindow} as it sweeps.
-     *
-     * <p><b>This is the fork the watch could not resolve on its own.</b> Everything else here is read
-     * from outside the animal; whether a swing actually happened is not visible from there, and the
-     * first run produced a hunt that closed on a squid, parked inside its own reach, and never
-     * appeared to bite. Two outcomes are possible and they need opposite fixes: no line at all means
-     * the goal never fired the swing and the gate is at fault, while a line saying no contact means
-     * the swing fired and the geometry missed.
-     */
     public static void reportSweep(@NotNull LivingEntity attacker, @NotNull Vec3 origin,
                                    @NotNull Vec3 facing, int hits) {
         if (watchTicksLeft <= 0 || watcher == null) {
@@ -231,13 +196,6 @@ public final class SMOPBiteDebug {
 
     // ───────────────────────────────────────────────────── READINGS ─────
 
-    /**
-     * The three distances, each beside the threshold that actually tests it.
-     *
-     * <p>{@code reach} is what decides whether to swing and is 3D; {@code stop} is horizontal only;
-     * the vertical gate is a flat 1.5 inside the goal. Printing all three together is the only way to
-     * see which of them an animal is sitting on the wrong side of.
-     */
     private static String gaps(@NotNull NirasmosaurusEntity mob, @NotNull LivingEntity target) {
         double dx = target.getX() - mob.getX();
         double dz = target.getZ() - mob.getZ();
@@ -249,14 +207,6 @@ public final class SMOPBiteDebug {
                 + " dV=" + fmt(vertical) + " (nav gate 1.5)";
     }
 
-    /**
-     * Where the body points, where the head points, and where the prey actually is.
-     *
-     * <p>The head error is what the bite volume is aimed by; the body error is what it USED to be
-     * aimed by, and the gap between the two columns is the bug that made the water bite miss. The rig
-     * only bends the neck 35 degrees of yaw, so a head error near zero with a large body error means
-     * the aim is honest but the model is leaning as far as it can.
-     */
     private static String aim(@NotNull NirasmosaurusEntity mob, @NotNull LivingEntity target) {
         double dx = target.getX() - mob.getX();
         double dz = target.getZ() - mob.getZ();

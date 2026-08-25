@@ -7,11 +7,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Predicate;
 
-/**
- * Guards the one nest this mob laid. It never searches — {@code GenericLayEggGoal} hands it the
- * position at the moment the egg is placed, so a mother stays with her own clutch rather than
- * adopting whichever nest happens to be closest.
- */
 public class ProtectOwnEggGoal extends ProtectEggBaseGoal {
 
     public ProtectOwnEggGoal(Animal mob, int stayNearEggRadius, int defenseRadius,
@@ -26,7 +21,6 @@ public class ProtectOwnEggGoal extends ProtectEggBaseGoal {
         return this.targetEggPos;
     }
 
-    /** Called when this mob lays an egg. */
     public void assignEgg(BlockPos pos) {
         this.targetEggPos = pos.immutable();
     }

@@ -5,18 +5,6 @@ import net.minecraft.client.animation.AnimationDefinition;
 import net.minecraft.client.animation.Keyframe;
 import net.minecraft.client.animation.KeyframeAnimations;
 
-/**
- * Nirasmosaurus calf clips in water, against {@link NirasBabyModel}.
- *
- * <p><b>Pruned channels.</b> The Blockbench export animates bones this mesh never defines, and 26.1
- * THROWS on a bone it cannot resolve rather than skipping it — so those channels are dropped, and
- * adding one back for a bone that is not in the mesh crashes at bake time.
- *
- * <p><b>Why the clips are split across classes</b> rather than merged into one file per rig, as the
- * other SMOP mobs do: every static initialiser in a class compiles into a single {@code <clinit>}
- * method, and the JVM caps a method at 64 KB. All 34 adult clips in one class overflows it — the
- * compiler answers "code too large".
- */
 public final class NirasBabyWaterAnimations {
 
     public static final AnimationDefinition w_idle = AnimationDefinition.Builder.withLength(4.0F).looping()

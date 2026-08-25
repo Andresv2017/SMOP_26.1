@@ -28,7 +28,6 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterSpecialModelRendererEvent;
 
-/** Model layer definitions and entity renderers. Mod-bus, client only. */
 @EventBusSubscriber(modid = SMOP.MOD_ID, value = Dist.CLIENT)
 public final class SMOPClientEvents {
 
@@ -59,10 +58,6 @@ public final class SMOPClientEvents {
         event.registerEntityRenderer(SMOPEntities.GT.get(), GTRenderer::new);
     }
 
-    /**
-     * Binds {@code smop:niras_spear} as an item-model type, so the spear's item definition can name it
-     * and get the real mesh instead of a flat sprite — see {@link NirasSpearSpecialRenderer}.
-     */
     @SubscribeEvent
     static void onRegisterSpecialModelRenderers(RegisterSpecialModelRendererEvent event) {
         event.register(SMOP.id("niras_spear"), NirasSpearSpecialRenderer.Unbaked.MAP_CODEC);
