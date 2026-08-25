@@ -266,7 +266,7 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
                 .applyTo(bite);
 
         // The dig turns the block over on the frame the snout is buried in it, rather than on a
-        // countdown running beside the clip — same mechanism as the Tangoftero's roar chain.
+        // countdown running beside the clip.
         dig.onFrame(DIG_BREAK_FRAME, e -> ((SalmonEntity) e).completeDig());
 
         // Mutually exclusive by construction: exactly one of these four holds at any moment.

@@ -89,15 +89,14 @@ public class SwimSteerControl extends MoveControl {
     /**
      * Swim inclination, held here instead of on the entity.
      *
-     * <p><b>It used to be written to {@code mob.setXRot}, and that was the head jitter.</b>
-     * {@code AnimContext} feeds {@code state.xRot} to the rig's {@code lookAt} as the HEAD pitch, so
-     * putting the path inclination there handed the neck a value that is not a look at all — and one
-     * that moves in hard steps, because the pitch target jumps every time the navigator advances a
-     * node. A tick sample showed it climbing in exact 4.000 increments (this control's own pitch rate
-     * saturating) separated by near-flat stretches: a staircase, copied straight onto the neck.
+     * <p><b>Never write this to {@code mob.setXRot}.</b> {@code AnimContext} feeds {@code state.xRot}
+     * to the rig's {@code lookAt} as the HEAD pitch, so putting the path inclination there hands the
+     * neck a value that is not a look at all — and one that moves in hard steps, because the pitch
+     * target jumps every time the navigator advances a node. The result is a staircase copied onto
+     * the neck, which is the head jitter.
      *
-     * <p>Kept private, the inclination still drives {@code zza}/{@code yya} exactly as before, while
-     * {@code xRot} goes back to meaning what the rig thinks it means — where the head is looking.
+     * <p>Kept private, the inclination still drives {@code zza}/{@code yya} while {@code xRot} keeps
+     * meaning what the rig thinks it means: where the head is looking.
      * Body tilt is {@code swimPitch}'s job, and it is smoothed for the purpose.
      */
     private float pitch;

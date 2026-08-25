@@ -41,10 +41,9 @@ public class SalmonDigGoal extends Goal {
     /** How far out it will look for something to dig. */
     private static final int SEARCH_RANGE = 12;
     /**
-     * How far <b>below</b> itself it looks. This is the whole reason digging never started: the
-     * search box used to be ±1 block in Y, and a salmon cruises in midwater — the river bed is
-     * routinely three or four blocks under it, so the box never contained a single diggable block
-     * and the pufferfish was spent on a search that could not succeed.
+     * How far <b>below</b> itself it looks, and it has to be this deep: a salmon cruises in midwater
+     * and the river bed is routinely three or four blocks under it, so a shallow box never contains a
+     * diggable block at all and the pufferfish is spent on a search that cannot succeed.
      */
     private static final int SEARCH_DOWN = 6;
     private static final int SEARCH_UP = 2;
@@ -228,12 +227,11 @@ public class SalmonDigGoal extends Goal {
     /**
      * Swims to the water block <b>on top of</b> the target, never into the target itself.
      *
-     * <p>The old version aimed at the bed block's own centre. That block is solid, so
-     * {@code SwimNodeEvaluator} types it BLOCKED and A* can never produce a node there: the
-     * navigator handed back a partial path that led nowhere, {@code moveTo} still reported success
-     * because the path was non-null, and the fish sat re-issuing an order it could not follow until
-     * the 200-tick timeout — then picked another block and did it again. Aiming at the open water
-     * above the bed is both reachable and exactly where the fish should hover to dig.
+     * <p>Aiming at the bed block's own centre cannot work: it is solid, so {@code SwimNodeEvaluator}
+     * types it BLOCKED and A* never produces a node there. The navigator then hands back a partial
+     * path that leads nowhere while {@code moveTo} still reports success — the path is non-null — so
+     * the fish re-issues an order it cannot follow until the timeout. The open water above the bed is
+     * both reachable and where the fish should hover to dig.
      */
     private boolean moveToTarget() {
         if (this.target == null) {
