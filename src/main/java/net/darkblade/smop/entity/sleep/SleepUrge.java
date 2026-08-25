@@ -93,9 +93,9 @@ public final class SleepUrge {
      *
      * <p><b>It has to defeat three separate gates, not one.</b> Sleep normally requires night and a
      * quiet spell ({@link #wantsToSleep()}), it refuses to start with anything threatening nearby, and
-     * it ends the moment the sun comes up or something walks over — and for the hippo a player
-     * standing next to it <em>is</em> a threat ({@code shouldWakeOnPlayerProximity}), which is
-     * unavoidable when the whole point is that the player is right there with a saddle. So
+     * it ends the moment the sun comes up or something walks over — and a player standing next to
+     * it always counts as something walking over, which is unavoidable when the whole point is that
+     * the player is right there with a saddle. So
      * {@link SleepGoal} reads this flag to skip its threat scan and its daylight check too.
      *
      * <p>1.20.1 solved the same problem with a {@code sleepingDueToEnvironment} boolean whose comment

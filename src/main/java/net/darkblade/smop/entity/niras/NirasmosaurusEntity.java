@@ -1251,8 +1251,7 @@ public class NirasmosaurusEntity extends SMOPWaterAnimal implements SwimTilt, Cu
 
     /**
      * Nothing type-specific rouses it — an animal that sleeps in open water has nothing in particular
-     * to fear. It still wakes to a player walking up, which is {@code SleepGoal}'s default and the
-     * reason this does not implement {@code ISleepAwareness}.
+     * to fear. It still wakes to a player walking up: every mob does.
      */
     @Override
     public @NotNull Set<EntityType<?>> getInterruptingEntityTypes() {
