@@ -11,16 +11,7 @@ import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Hell Hippo calf. A separate mesh rather than a scaled adult, so it gets its own layer, its own
- * 128×128 atlas (the adult is 256×256) and its own clip set in {@code HellHippoBabyAnimations}.
- *
- * <p><b>It has fewer bones than the adult</b>, and that is load-bearing rather than incidental: there
- * is no {@code nose_hairs}, and the hind legs stop at {@code right_leg2}/{@code left_leg2} with no
- * {@code right_calf}/{@code left_calf} below them. A clip is baked against whichever mesh is being
- * drawn and throws on a bone that mesh does not define, so an adult clip must never be handed to this
- * model — which is what the age-aware {@code clip(...)} registration in the entity is for.
- */
+
 public class HellHippoBabyModel extends EntityModel<DeluxeEntityRenderState> {
 
     public static final ModelLayerLocation LAYER_LOCATION =

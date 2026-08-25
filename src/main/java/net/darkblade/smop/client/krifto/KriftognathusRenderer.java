@@ -49,7 +49,6 @@ public class KriftognathusRenderer
     public void extractRenderState(@NotNull KriftognathusEntity entity, @NotNull KriftoRenderState state,
                                    float partialTick) {
         super.extractRenderState(entity, state, partialTick);
-        // 26.1's setupAnim only gets the state, and the rig needs the animator to know what is playing.
         if (entity instanceof Animatable<?> animatable) {
             state.animator = animatable.animator();
         }
@@ -57,8 +56,6 @@ public class KriftognathusRenderer
         state.spawnBiome = entity.getSpawnBiomePath();
         state.flightPitch = Mth.lerp(partialTick, entity.prevFlightPitch, entity.flightPitch);
         state.flightRoll = Mth.lerp(partialTick, entity.prevFlightRoll, entity.flightRoll);
-        // Resolved unconditionally, same as vanilla's own HoldingEntityRenderState: an empty
-        // ItemStack resolves to an empty ItemStackRenderState, which StolenItemLayer skips itself.
         this.itemModelResolver.updateForLiving(state.stolenItem, entity.getStolenItem(),
                 ItemDisplayContext.GROUND, entity);
     }

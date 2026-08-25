@@ -23,7 +23,6 @@ public final class KriftoPerchTuner extends NumpadAxisTuner {
 
     private Mode mode = Mode.POS;
 
-    // Null = "not overridden yet, seed from the compiled default on first read".
     private @Nullable Float side;
     private @Nullable Float height;
     private @Nullable Float forward;

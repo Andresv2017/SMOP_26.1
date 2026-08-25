@@ -20,10 +20,6 @@ public class KriftognathusModel extends EntityModel<DeluxeEntityRenderState> {
             Rig.<KriftognathusModel>builder()
                     .resetPoses()
                     .keyframeBlend(220L, 0)
-                    // Layer 1: the jaw overlay, bite_flight (gLower_jaw only). Applied after layer 0
-                    // so it composites additively on top of whatever locomotion/flight clip is
-                    // current instead of replacing it, which would drop every bone it does not
-                    // author back to the bind pose.
                     .keyframeBlend(80L, 1)
                     .lookAt(m -> m.neck, 35.0F, 30.0F)
                     .build();
