@@ -293,17 +293,13 @@ public class TangofteroEntity extends SMOPAnimal
         // a sector of any usable arc also catches whatever stands beside or slightly behind the
         // mob, which reads as the Tangoftero biting sideways. Box#contains rejects anything off
         // the muzzle no matter how close, so what gets bitten is what the head is pointed at.
-        // Length runs from the anchor (0.6 ahead of the feet) out to ~2.2, just past the goal's
-        // 2.0 reach; halfWidth 0.6 is roughly the jaw's own width. Tune with /deluxelib debug
-        // hitboxes. Damage matches the ATTACK_DAMAGE attribute — a literal, same convention as
-        // Athenian and Arpy, which do not track the live attribute either.
-        // filter: a wild Tangoftero never bites another Tangoftero — this is what keeps the flock
-        // from mauling itself over stray HurtByTargetGoal retaliations. A TAMED one is the one
-        // exception: it can end up targeting a wild Tangoftero through the same owner-defence goals
-        // (OwnerHurtByTargetGoal/OwnerHurtTargetGoal) that let it defend against anything else, and
-        // without this escape hatch the bite would silently veto that target before the shape test
-        // ever ran — same bug as the Kriftognathus's identical filter, same fix: let the actual
-        // target through, keep the blanket exclusion for everyone else of the species.
+        // Length runs from the anchor (0.6 ahead of the feet) out to ~2.2, just past the goal's 2.0
+        // reach; halfWidth 0.6 is roughly the jaw's own width. Tune with /deluxelib debug hitboxes.
+        //
+        // filter: a wild Tangoftero never bites another, which keeps the flock from mauling itself
+        // over stray retaliations. A TAMED one is the exception — the owner-defence goals can point it
+        // at a wild one — and without that escape hatch the bite vetoes its own target in the
+        // broad-phase predicate, before the shape test runs, so it reads as a geometry miss.
         HitWindow.of(6, 8)
                 .shape(AttackShape.box(1.6F, 0.6F))
                 .anchor(0.6F, 0.0F, 0.5F)
@@ -322,17 +318,14 @@ public class TangofteroEntity extends SMOPAnimal
                 && this.isMoving() && this.isAggressive());
         swim.setPlayCondition(a -> this.canPlayLocomotion() && this.isInWater());
 
-        // The two transitions are PLAY_ONCE, and MobAnimator's auto-start loop only ever starts
-        // REPEATING clips — so these conditions do NOT start them. SleepGoal does, through the
-        // onSleepPhaseBegin hook. What the conditions buy is the reverse: BaseAnimation#tick stops a
-        // playing clip whose condition has gone false, so a mob shaken awake mid-settle cuts the clip
-        // instead of finishing it. The phase lengths are no longer written out a second time as
-        // constants — SleepGoal reads them straight off these clips (see
-        // SMOPAnimal#sleepPhaseDuration), so a re-export that changes a clip's length can no longer
-        // leave the mob holding a last frame for the difference.
+        // These conditions do NOT start the transitions — SleepGoal does, through onSleepPhaseBegin
+        // (which explains why). What they buy is the reverse: a clip whose condition goes false is
+        // CUT, so a mob shaken awake mid-settle drops the clip instead of finishing it.
         //
-        // Three phases here, six on the Krifto, same goal driving both: the cycle is assembled from
-        // whichever clips a mob registers, and this one has no sitting clips. See SleepPhase.
+        // Phase lengths are read straight off these clips by SMOPAnimal#sleepPhaseDuration rather
+        // than written out again as constants, so a re-export cannot leave the mob holding a last
+        // frame for the difference. The cycle is assembled from whichever clips a mob registers, and
+        // this one has no sitting clips.
         preparingSleep.setPlayCondition(a -> this.isPreparingSleep());
         awakening.setPlayCondition(a -> this.isAwakening());
 
@@ -345,18 +338,14 @@ public class TangofteroEntity extends SMOPAnimal
         // snap-into-the-loop sequence.
         //
         // The two clocks that meet here are independent — the animator runs on EntityTickEvent.Pre,
-        // the goal's phase timer on the goal selector — so whether the clip stops the tick before,
-        // the same tick as, or the tick after the goal raises isSleeping() is not something this
-        // code should have to depend on. Two things make it not matter:
+        // the goal's phase timer on the goal selector — so the handoff must not depend on their
+        // order. Two things make it not matter: sleep is eligible through the settling phase as well,
+        // so the loop is armed the moment preparing_sleep ends; and preparing_sleep names it as its
+        // successor, so the handoff lands inside the same tick rather than waiting for the next
+        // auto-start sweep.
         //
-        //   1. sleep is allowed to play through the settling phase as well, so the moment
-        //      preparing_sleep ends the loop is already eligible — whether it is started by
-        //      triggerNextAnimation below or by MobAnimator's auto-start pass in the same tick.
-        //   2. preparing_sleep names it explicitly as its successor, so the handoff happens inside
-        //      the same tick the clip ends rather than waiting for the next auto-start sweep.
-        //
-        // Both flags going false (shaken awake mid-settle) still stops the loop, so an interrupted
-        // settle cannot leave the mob asleep on its feet.
+        // Both flags going false still stops the loop, so an interrupted settle cannot leave the mob
+        // asleep on its feet.
         sleep.setPlayCondition(a -> this.isSleeping() || this.isPreparingSleep());
         preparingSleep.setNextAnimation(ANIM_SLEEP);
 
@@ -372,20 +361,16 @@ public class TangofteroEntity extends SMOPAnimal
      * True when the locomotion family is allowed to run at all.
      *
      * <p><b>It deliberately does not exclude sleeping, roaring or attacking</b>, even though those
-     * clips must be the ones on screen. {@code BlendLayer#current} renders the playing animation
-     * with the <em>lowest priority number</em>, and every one-shot here sits at 0 or 1 against
-     * locomotion's 2–3 — so they already win the frame, and {@code MobAnimator#tick}'s auto-start
-     * loop refuses to start locomotion underneath a lower number, so nothing new creeps in either.
+     * clips must be the ones on screen. Exclusion is by PRIORITY: {@code BlendLayer#current} renders
+     * the lowest priority number, every one-shot here sits at 0 or 1 against locomotion's 2-3, and
+     * the auto-start loop will not start locomotion underneath a lower number either.
      *
-     * <p>What excluding them cost was the gap at the far end. The animator runs on
-     * {@code EntityTickEvent.Pre}, ahead of the goals, so on the tick a one-shot expires the flag
-     * that gates locomotion is still set: the one-shot stops, locomotion cannot start, and the
-     * layer is left with nothing playing until the goal clears the flag and the <em>next</em> tick
-     * starts idle. {@link Rig} calls {@code resetPose()} unconditionally every frame, so an empty
-     * layer is not "hold the last frame", it is the bind pose — the model visibly collapses and
-     * snaps back. That is the freeze between {@code awakening} and idle, and between the end of a
-     * roar and idle. Leaving idle running underneath means the frame the one-shot ends, idle is
-     * already there to render.
+     * <p>Excluding them by condition costs the gap at the far end. The animator runs on
+     * {@code EntityTickEvent.Pre}, ahead of the goals, so on the tick a one-shot expires the gating
+     * flag is still set: the one-shot stops, locomotion cannot start, and the layer has nothing
+     * playing until the next tick. {@link Rig} calls {@code resetPose()} every frame, so an empty
+     * layer is not "hold the last frame" — it is the BIND POSE, and the model visibly collapses and
+     * snaps back.
      */
     private boolean canPlayLocomotion() {
         return !this.isDeadOrDying();
@@ -426,16 +411,14 @@ public class TangofteroEntity extends SMOPAnimal
      * Chicks of this species never fight — not the undead, not whoever hit them, not alongside the
      * flock.
      *
-     * <p>Enforced here rather than in each goal because every route to a target funnels through
-     * this one call: the two owner-defence goals, {@link AssistFlockGoal}, {@code HurtByTargetGoal}
-     * and the undead scan all end in {@code setTarget}. Gating them one by one would leave
-     * {@code HurtByTargetGoal} — a vanilla goal with no predicate hook — as a hole, and any goal
-     * added later as another one.
+     * <p>Enforced here rather than per goal because every route to a target funnels through this one
+     * call, and gating them one by one leaves {@code HurtByTargetGoal} — a vanilla goal with no
+     * predicate hook — as a hole, plus any goal added later as another.
      *
-     * <p>Refusing the target, rather than only refusing the bite, is what stops the chick from
-     * <em>chasing</em>: the melee goal keys off {@code getTarget()}, and so does the {@code sprint}
-     * clip through {@code isAggressive()}. Blocking the swing alone (which is all
-     * {@code attackCondition} did) left the baby running the zombie down and snapping at nothing.
+     * <p>Refusing the TARGET and not just the bite is what stops the chick from <em>chasing</em>:
+     * the melee goal keys off {@code getTarget()}, and so does the {@code sprint} clip through
+     * {@code isAggressive()}. Blocking the swing alone leaves the baby running the zombie down and
+     * snapping at nothing.
      *
      * <p>Clearing a target ({@code null}) is always allowed — growing up mid-fight must not strand
      * an adult's target on a mob that can no longer act on it.
@@ -453,9 +436,8 @@ public class TangofteroEntity extends SMOPAnimal
      *
      * <p>{@link DirectionalMoveControl} only steers while it has a waypoint, and
      * {@code AnimatableMeleeAttackGoal} stops the navigation as soon as the target is inside reach —
-     * exactly the ticks during which the bite fires. This is the same call
-     * {@code GuardedMeleeAttackGoal} makes for the Athenian, hoisted onto the entity because
-     * {@code AnimatableMeleeAttackGoal} does not make it itself.
+     * exactly the ticks during which the bite fires. {@code AnimatableMeleeAttackGoal} does not make
+     * this call itself, so the entity does.
      *
      * <p>Skipped while the mob is pinned (asleep, roaring): those states own the pose, and turning
      * under them would swing the whole body while the clip plays.
@@ -506,13 +488,8 @@ public class TangofteroEntity extends SMOPAnimal
     /**
      * Sends every nearby undead pathing away from this mob.
      *
-     * <p>The loop itself now lives in {@link UndeadScatter}, because the tango arrow does the same
-     * thing with a shorter reach and the two were drifting copies waiting to happen. The numbers stay
-     * here — they are this animal's, not the helper's.
-     *
-     * <p>One deliberate change came with the extraction: the search volume is now a sphere-ish box
-     * around this mob's <em>position</em> rather than around its bounding box. On a 1x1 animal that
-     * moves the edge of the effect by half a block, which is well inside the slop of a 10-block panic.
+     * <p>The loop lives in {@link UndeadScatter}, shared with the tango arrow. The numbers stay here:
+     * they are this animal's, not the helper's.
      */
     private void scareUndead() {
         UndeadScatter.scatter(this.level(), this.position(),
