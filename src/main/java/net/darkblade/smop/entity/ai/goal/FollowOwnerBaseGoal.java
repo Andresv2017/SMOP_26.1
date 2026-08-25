@@ -15,9 +15,8 @@ import java.util.EnumSet;
  * state ({@code isOrderedToSit()} / {@code isWandering()} / following) and takes separate start and
  * stop distances, so a mob does not shuffle back and forth at the edge of its follow radius.
  *
- * <p><b>Port note.</b> The 1.20.1 version hand-rolled ~40 lines of teleport-to-owner search with
- * its own fly/swim path-type checks. 26.1 gives {@code TamableAnimal} a maintained
- * {@code tryToTeleportToOwner()} (with a {@code canFlyToOwner()} hook), so that is used instead.
+ * <p>Teleporting uses {@code TamableAnimal#tryToTeleportToOwner()}, which is maintained by vanilla
+ * and has a {@code canFlyToOwner()} hook, rather than a hand-rolled search.
  */
 public class FollowOwnerBaseGoal extends Goal {
 

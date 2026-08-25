@@ -13,9 +13,8 @@ import net.minecraft.world.item.consume_effects.ApplyStatusEffectsConsumeEffect;
 /**
  * Nutrition/saturation and eat-time side effects for SMOP's edible items.
  *
- * <p><b>Port note (1.20.1 → 26.1).</b> {@code FoodProperties} is now a bare
- * {@code (nutrition, saturation, canAlwaysEat)} record: its builder lost both {@code .effect(...)}
- * and {@code .meat()}.
+ * <p>{@code FoodProperties} is a bare {@code (nutrition, saturation, canAlwaysEat)} record: its
+ * builder has neither {@code .effect(...)} nor {@code .meat()}.
  * <ul>
  *   <li>Eat-time status effects moved to the {@link Consumable} component — hence the
  *       {@link Entry} pairing below, fed to {@code Item.Properties#food(FoodProperties, Consumable)}.</li>

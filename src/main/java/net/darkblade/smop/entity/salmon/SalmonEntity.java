@@ -209,8 +209,8 @@ public class SalmonEntity extends SMOPWaterAnimal implements ISleepThreatEvaluat
         this.goalSelector.addGoal(3, new SalmonDigGoal(this, 1.0D));
         this.goalSelector.addGoal(4, new GenericBreedGoal<>(this, 1.1D));
 
-        // Solitary nester: it minds the roe it laid itself, and does nothing about intruders —
-        // IGNORE plus a selector that matches nobody, exactly as on 1.20.1.
+        // Solitary nester: it minds the roe it laid itself and does nothing about intruders —
+        // IGNORE plus a selector that matches nobody.
         EggGoalRegistry.registerWithOwnGoal(this, SMOPBlocks.SALMON_ROE_EGGS,
                 4, 6, false, false,
                 ProtectEggBaseGoal.EggBreakReaction.IGNORE, NO_PREY, 5);

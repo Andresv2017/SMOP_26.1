@@ -5,11 +5,9 @@ import net.minecraft.server.level.ServerPlayer;
 /**
  * A mount that reacts to SMOP's rider keybinds (attack, fear, open inventory, descend).
  *
- * <p><b>Design note.</b> On 1.20.1 the rider packet held a {@code switch} over the concrete mob
- * classes ({@code Hell_HippoEntity}, {@code NirasmosaurusEntity}), so the network layer had to
- * import every rideable mob and every new mount meant editing the packet. Routing through this
- * interface inverts that: the packet only knows "the vehicle handles its own actions", and a mount
- * opts in by implementing it. Unsupported actions are simply ignored by the implementer.
+ * <p>Routing through an interface keeps the network layer from importing every rideable mob: the
+ * packet only knows "the vehicle handles its own actions", and a mount opts in by implementing this.
+ * Unsupported actions are simply ignored by the implementer.
  */
 public interface RiderControllable {
 

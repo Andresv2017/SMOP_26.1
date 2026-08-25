@@ -39,13 +39,9 @@ import java.util.List;
  * Shared base for every SMOP creature: sleep cycle, roaring, egg laying, and the tame
  * sit/follow/wander order state.
  *
- * <p><b>Port note — this class no longer animates anything.</b> The 1.20.1 {@code BaseEntity} owned
- * a dozen {@code AnimationState} fields plus {@code updateBaseAnimations()}, a ~100-line imperative
- * cascade of {@code start()}/{@code stop()} calls that every subclass overrode and fought with.
- * All of it is gone. Animation is declarative now: this class only exposes <em>state</em> (all of it
- * synced), and each mob's {@code registerAnimations()} binds its Blockbench clips to that state with
- * {@code setPlayCondition}. DeluxeLib's {@link MobAnimator} handles layering, priorities, blending
- * and the auto-start loop.
+ * <p><b>This class animates nothing.</b> It exposes <em>state</em>, all of it synced, and each mob's
+ * {@code registerAnimations()} binds its clips to that state with {@code setPlayCondition}.
+ * DeluxeLib's {@link MobAnimator} handles layering, priorities, blending and the auto-start loop.
  *
  * <p>Because play conditions are evaluated on both sides, anything they read has to agree on both
  * sides — which is why {@link #isMoving()} is a synced flag fed by a hold timer rather than a direct

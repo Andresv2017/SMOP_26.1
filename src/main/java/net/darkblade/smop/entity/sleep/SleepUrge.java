@@ -98,10 +98,6 @@ public final class SleepUrge {
      * the player is right there with a saddle. So
      * {@link SleepGoal} reads this flag to skip its threat scan and its daylight check too.
      *
-     * <p>1.20.1 solved the same problem with a {@code sleepingDueToEnvironment} boolean whose comment
-     * read <em>"importante para evitar que lo despierte el sol"</em>. Same idea, one flag instead of
-     * an inverted one.
-     *
      * <p>Clearing it does not wake the mob by itself — pair it with {@link #requestWake()} when the
      * reason for the forced sleep has gone.
      */

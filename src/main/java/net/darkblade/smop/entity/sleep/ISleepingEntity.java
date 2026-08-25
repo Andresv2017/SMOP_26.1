@@ -16,8 +16,6 @@ import java.util.Set;
  * readers below are derived from it. That keeps six phases from costing six synced booleans — the
  * same call {@code SMOPAnimal}'s scripted-action state makes — and it means every existing
  * {@code setPlayCondition(a -> this.isSleeping())} kept working untouched when the phases were added.
- *
- * <p>Port note: 1.20.1 spelled the third phase {@code isAwakeing}/{@code setAwakeing}; corrected here.
  */
 public interface ISleepingEntity {
 

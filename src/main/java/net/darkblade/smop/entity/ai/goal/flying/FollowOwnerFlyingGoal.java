@@ -12,11 +12,10 @@ import java.util.EnumSet;
  * Escorts the owner through the air: holds a point just off their side and above head height while
  * they move, and drifts into a slow orbit once they have stood still for a while.
  *
- * <p><b>Port note.</b> The 1.20.1 goal pathed to the owner, recalculated every 10 ticks, and
- * teleported the moment the gap reached 12 blocks — which in practice meant it teleported constantly,
- * because a flying navigation rarely closes that gap in ten ticks. This is an adaptation of the
- * {@code FollowOwnerGoal} inside DeluxeLib's Owl: navigation is stopped and the mob is flown by
- * direct velocity control, so it arcs in and settles instead of stair-stepping and blinking.
+ * <p>Adapted from the {@code FollowOwnerGoal} in DeluxeLib's Owl: navigation is stopped and the mob
+ * is flown by direct velocity control, so it arcs in and settles instead of stair-stepping. Pathing to
+ * the owner and teleporting on a fixed gap teleports constantly, because a flying navigation rarely
+ * closes that gap between recalculations.
  *
  * <p>The actual flight is {@link OrbitFlightController}'s critically damped PD loop — see that class
  * for the arithmetic and why the gains below are not independent knobs. They are the Owl's values,
@@ -141,9 +140,8 @@ public class FollowOwnerFlyingGoal extends Goal {
         this.mob.getLookControl().setLookAt(owner, 10.0F, this.mob.getMaxHeadXRot());
 
         if (this.mob.distanceToSqr(owner) > TELEPORT_DISTANCE_SQ) {
-            // 26.1 maintains this on TamableAnimal, complete with a canFlyToOwner() hook — the
-            // 1.20.1 version of this goal hand-rolled a ~40-line search with its own path-type
-            // checks. It returns void and may quietly fail, so the escort below runs regardless: if
+            // Maintained by vanilla, complete with a canFlyToOwner() hook. It returns void and may
+            // quietly fail, so the escort below runs regardless: if
             // it worked the error is now tiny and the controller has nothing to do, and if it did
             // not the mob simply keeps flying over. Flight state is deliberately left alone — forcing
             // a landing on a teleport that failed would drop the mob out of the sky.

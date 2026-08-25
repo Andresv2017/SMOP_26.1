@@ -79,8 +79,8 @@ public final class SMOPItems {
             ITEMS.registerSimpleItem("cooked_tango_leg", () -> food(SMOPFoods.COOKED_TANGO_LEG));
 
     /**
-     * 1.20.1 used {@code BowlFoodItem} to hand the empty bowl back. That class is gone in 26.1 —
-     * returning a container after eating is the {@code usingConvertsTo} property now.
+     * Returning the empty bowl after eating is the {@code usingConvertsTo} property, not a
+     * {@code BowlFoodItem} subclass.
      */
     public static final DeferredItem<Item> KRIFTO_STEW =
             ITEMS.registerSimpleItem("krifto_stew",
@@ -142,11 +142,8 @@ public final class SMOPItems {
     /**
      * Barding for a saddled Hell Hippo. Worn in {@link EquipmentSlot#BODY}, like horse armour.
      *
-     * <p><b>The +5 armour is a data component, not code.</b> 1.20.1 carried a synced {@code DATA_ARMOR}
-     * flag beside an {@code updateArmorBonus()} that added and removed an {@code AttributeModifier} by
-     * hand, watching the inventory slot to know when — about seventy lines. In 26.1 the modifier rides
-     * on the item and vanilla applies and reverts it with the equipment, so the number below is the
-     * whole of it. Same value the legacy used.
+     * <p><b>The +5 armour is a data component, not code.</b> The modifier rides on the item and vanilla
+     * applies and reverts it with the equipment, so the number below is the whole of it.
      *
      * <p>{@code setAllowedEntities} restricts it to this one mob, which is also what stops it being
      * strapped to a horse. Resolving {@code SMOPEntities} inside the properties lambda is safe for the
@@ -175,10 +172,9 @@ public final class SMOPItems {
     /**
      * A throwable javelin, and the stack size is the balance lever.
      *
-     * <p>1.20.1 allowed 16, which made throwing one weightless. Four is a handful: enough that the
-     * spear is ammunition rather than a single precious trident, few enough that you notice spending
-     * one. Melee numbers are the legacy's, unchanged — the spear is a poor sword and a good javelin,
-     * and the slow swing is what says so.
+     * <p>Four is a handful: enough that the spear is ammunition rather than a single precious trident,
+     * few enough that you notice spending one. A stack of sixteen makes throwing one weightless. The
+     * melee numbers say the rest — a poor sword and a good javelin, and the slow swing is what says so.
      */
     public static final DeferredItem<Item> NIRAS_SPEAR =
             ITEMS.registerItem("niras_spear", props -> new NirasSpearItem(props
@@ -207,11 +203,8 @@ public final class SMOPItems {
     // ───────────────────────────────────────────────────── SPAWN EGGS ─────
 
     /**
-     * 1.20.1 needed Forge's {@code ForgeSpawnEggItem} because vanilla's constructor took the entity
-     * type and could not resolve a modded one in time. In 26.1 {@link SpawnEggItem} takes only
-     * properties — which entity it spawns is a data component, applied here via
-     * {@code Item.Properties#spawnEgg}. Colours come from the entity's own definition rather than
-     * the two hex values the old constructor took.
+     * {@link SpawnEggItem} takes only properties — which entity it spawns is a data component, applied
+     * here via {@code Item.Properties#spawnEgg}, and the colours come from the entity's own definition.
      */
     public static final DeferredItem<SpawnEggItem> TANGOFTERO_SPAWN_EGG =
             ITEMS.registerItem("tangoftero_spawn_egg",

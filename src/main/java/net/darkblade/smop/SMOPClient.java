@@ -7,8 +7,7 @@ import net.neoforged.fml.common.Mod;
 
 /**
  * Client-only entrypoint. Never loaded on a dedicated server, so client classes are safe to touch
- * from here — this replaces the {@code ClientProxy}/{@code CommonProxy} + {@code DistExecutor} pair
- * the 1.20.1 version used.
+ * from here.
  *
  * <p>Renderers, model layers, keybinds and client events get wired up here as each mob is ported.
  */

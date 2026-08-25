@@ -12,10 +12,9 @@ import java.util.function.Supplier;
 /**
  * Settles a gravid mob for a moment, then places its egg block.
  *
- * <p><b>Design note.</b> On 1.20.1 this goal took a {@code ProtectOwnEggGoal} directly so it could
- * tell it where the egg went, and had a second constructor that passed {@code null} for the
- * search-based case. It takes a {@code Consumer<BlockPos>} now: the laying goal no longer knows
- * anything about guarding, and {@link EggGoalRegistry} wires the two together.
+ * <p>It reports where the egg went through a {@code Consumer<BlockPos>} rather than to a guard goal
+ * directly, so the laying goal knows nothing about guarding and {@link EggGoalRegistry} wires the two
+ * together.
  */
 public class GenericLayEggGoal<T extends SMOPAnimal> extends Goal {
 

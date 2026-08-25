@@ -10,10 +10,9 @@ import net.minecraft.world.level.biome.Biomes;
  *
  * <p>Registering a spawn placement (see {@code SMOPEntityAttributes}) only says <em>where within a
  * biome</em> a mob may appear — it does not put the mob into any biome's spawner list. That second
- * half is a {@code neoforge:add_spawns} biome modifier, which 1.20.1 shipped as a hand-written
- * {@code data/smop/forge/biome_modifier/add_tangoftero.json}. Entries submitted here are held in
- * memory and written out as that datapack file by {@code DeluxeBiomeSpawnProvider} during server
- * datagen, so the file cannot drift away from the registry.
+ * half is a {@code neoforge:add_spawns} biome modifier. Entries submitted here are held in memory
+ * and written out as that datapack file by {@code DeluxeBiomeSpawnProvider} during server datagen, so
+ * the file cannot drift away from the registry.
  *
  * <p>Called from {@code SMOP}'s constructor: the builder demands to run during mod initialisation,
  * and the entity type is captured as a supplier so the {@code DeferredHolder} is only resolved once
@@ -21,7 +20,6 @@ import net.minecraft.world.level.biome.Biomes;
  */
 public final class SMOPSpawns {
 
-    /** Weight, pack size and biome carried over unchanged from the 1.20.1 biome modifier. */
     public static void register() {
         DeluxeBiomeSpawns.builder(SMOPEntities.TANGOFTERO::get, MobCategory.CREATURE)
                 .spawnRate(10, 2, 4)
@@ -50,15 +48,14 @@ public final class SMOPSpawns {
                 .biomeTag(BiomeTags.IS_RIVER)
                 .submit();
 
-        // Savannas and swamps, one at a time. 1.20.1 shipped savanna only, at weight 15 in packs of
-        // 1-3; neither number survives — a two-and-a-half-block animal arriving in threes reads as a
-        // wall of hippo, and one is what this mob is for.
+        // Savannas and swamps, ONE AT A TIME: a two-and-a-half-block animal arriving in threes reads
+        // as a wall of hippo, and one is what this mob is for.
         //
-        // Weight 4, anchored against what it is competing with rather than carried over. The savanna
+        // Weight 4, anchored against what it is competing with. The savanna
         // already holds 52 points of CREATURE weight (sheep 12, pig 10, chicken 10, armadillo 10,
         // cow 8, horse 1, donkey 1) and the swamp 50 (the same farm animals plus frog 10). The
-        // legacy's 15 would take 22% of every roll — making this the single most likely animal in
-        // the biome, ahead of sheep, which is how it read in play. 4 puts it near the horse: the
+        // A weight of 15 would take 22% of every roll — the single most likely animal in the biome,
+        // ahead of sheep, which is how it read in play. 4 puts it near the horse: the
         // large, biome-flavoured animal you come across now and then, not the one you wade through.
         //
         // Worth remembering when tuning: a female rolls a companion calf half the time
@@ -74,10 +71,8 @@ public final class SMOPSpawns {
                         Biomes.SWAMP, Biomes.MANGROVE_SWAMP)
                 .submit();
 
-        // The four biomes 1.20.1 chose, kept as they are: warm and temperate open water plus the beach
-        // it hauls out onto. Cold and deep oceans are absent on purpose in the legacy, and that reads as
-        // a deliberate range for the animal rather than an omission — a basking reptile belongs in warm
-        // shallows.
+        // Warm and temperate open water plus the beach it hauls out onto. Cold and deep oceans are out
+        // on purpose: a basking reptile belongs in warm shallows.
         //
         // The beach entry was inert until the placement type was widened — see SMOPSpawnPlacementTypes.
         // Worth knowing what it buys: minecraft:beach is the strip of SAND, not the water beside it
@@ -97,7 +92,7 @@ public final class SMOPSpawns {
         // one squid roll consumes four of the five slots in the category cap and the next opening is a
         // while coming. The weight has to buy its way past that, not just past the other animals.
         //
-        // Pack 1-2, as the legacy had it, and the group is always a horizontal cluster at ONE depth:
+        // Pack 1-2, and the group is always a horizontal cluster at ONE depth:
         // spawnCategoryForPosition reads yStart once, outside both loops, and only jitters x and z by
         // plus-or-minus six per member. So pack size buys width, never depth — the depth spread comes
         // from separate spawn events, each of which draws its own Y. Two is also the real ceiling only

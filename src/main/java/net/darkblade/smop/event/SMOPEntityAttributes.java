@@ -32,8 +32,7 @@ public final class SMOPEntityAttributes {
     }
 
     /**
-     * 26.1 registers spawn placements through an event rather than the static
-     * {@code SpawnPlacements.register} call 1.20.1 made from {@code commonSetup}.
+     * Spawn placements are registered through an event rather than a static call at setup.
      */
     @SubscribeEvent
     static void onSpawnPlacements(RegisterSpawnPlacementsEvent event) {

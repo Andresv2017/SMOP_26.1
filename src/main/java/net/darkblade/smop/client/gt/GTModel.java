@@ -11,24 +11,6 @@ import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * The Grand Tyrant. Geometry is the raw Blockbench export — 45 bones on a 512x512 sheet.
- *
- * <p><b>The bone names come across verbatim</b>, misspelled {@code troath} included. Every clip
- * addresses bones by name at bake time and 26.1 <em>throws</em> on a name this mesh does not define,
- * with no partial match and no fallback; renaming would mean editing thousands of keyframe lines for
- * no functional gain, and a rename that misses one channel fails at render time rather than at
- * compile time.
- *
- * <p><b>Verified before writing:</b> the clips animate 42 distinct bones and this rig declares 45, and
- * the 42 are a strict subset — so there is nothing to prune. The three the rig declares and no clip
- * ever touches ({@code legs}, {@code left_beak_r1}, {@code right_beak_r1}) are harmless: an unanimated
- * bone just holds its bind pose.
- *
- * <p>The look-at drives {@code neck} rather than {@code head}, for the same reason the Nirasmosaurus
- * does: on a long-necked animal, swivelling only the skull reads as the head coming loose from the
- * body. The limits are the entity's own {@code getMaxHeadYRot}/{@code getMaxHeadXRot} — 45 and 30.
- */
 public class GTModel extends EntityModel<DeluxeEntityRenderState> {
 
     public static final ModelLayerLocation LAYER_LOCATION =
@@ -39,10 +21,6 @@ public class GTModel extends EntityModel<DeluxeEntityRenderState> {
                     .resetPoses()
                     .keyframeBlend(220L, 0)
                     .lookAt(m -> m.neck, 45.0F, 30.0F)
-                    // El giro NO va aquí con TurnLeanAdditive, y no es por no estrenarlo: ese
-                    // componente aplica el mismo valor a todos los huesos a la vez, así que puede
-                    // inclinar pero no puede PROPAGAR, y lee el hueco cabeza-cuerpo, que en este bicho
-                    // vale casi cero porque no tiene goals de mirada. Ver GTSpineTurn.
                     .add(new GTSpineTurn())
                     .build();
 

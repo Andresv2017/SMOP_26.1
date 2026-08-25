@@ -17,12 +17,9 @@ import java.util.EnumSet;
  * <p>Reusable rather than hippo-specific — the Nirasmosaurus is amphibious too, and the only things
  * that differ are the clip and how long counts as soaked.
  *
- * <p><b>The 1.20.1 version of this never fired once.</b> Its {@code canUse} required a
- * {@code shouldShake} flag, and that flag was only ever raised inside {@code tick()} — which vanilla
- * calls only on a goal that is already running, which required {@code canUse} to have returned true,
- * which required the flag. Nothing could break the circle, so the behaviour shipped dead. The soak
- * has to be counted somewhere that runs whether or not the goal is active, which here is
- * {@link #canUse()}.
+ * <p><b>The soak is counted in {@link #canUse()}, and it has to be.</b> Vanilla calls {@code tick()}
+ * only on a goal that is already running, so a counter kept there can never raise the flag that would
+ * start the goal — a circle that ships the behaviour dead.
  *
  * <p>That in turn is why the counter accrues by <em>elapsed {@code tickCount}</em> instead of
  * {@code ++}: {@code GoalSelector} only re-evaluates {@code canUse} on alternate ticks (see

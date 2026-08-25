@@ -18,10 +18,8 @@ import org.slf4j.Logger;
 /**
  * Main mod entrypoint (NeoForge 26.1).
  *
- * <p>Ported from Forge 1.20.1, where the constructor took an {@code FMLJavaModLoadingContext} and
- * the mod juggled a {@code DistExecutor} client/common proxy pair. On NeoForge the mod event bus
- * and {@link ModContainer} are injected directly, and client-only wiring lives in {@link SMOPClient}
- * (a {@code Dist.CLIENT}-gated {@code @Mod} class) rather than a proxy.
+ * <p>The mod event bus and {@link ModContainer} are injected into the constructor, and client-only
+ * wiring lives in {@link SMOPClient}, a {@code Dist.CLIENT}-gated {@code @Mod} class.
  *
  * <p>Registries are attached here as each one is ported; see PORT_ANALYSIS.md for the phase order.
  */

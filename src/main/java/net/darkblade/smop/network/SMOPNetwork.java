@@ -9,10 +9,8 @@ import net.neoforged.bus.api.IEventBus;
 /**
  * SMOP's packet channel, built on DeluxeLib's {@link NetworkCreator}.
  *
- * <p><b>Port note.</b> 1.20.1 used Forge's {@code SimpleChannel}, which no longer exists;
- * {@code NetworkCreator} wraps NeoForge's payload system behind the same
- * {@code regPacket}/{@code sendToServer}/{@code sendToClient} shape the old {@code SMOPPackets}
- * had, so call sites port over unchanged.
+ * <p>{@code NetworkCreator} wraps NeoForge's payload system behind a
+ * {@code regPacket}/{@code sendToServer}/{@code sendToClient} shape.
  *
  * <p>Three of the four original packets are gone, absorbed by DeluxeLib:
  * <ul>

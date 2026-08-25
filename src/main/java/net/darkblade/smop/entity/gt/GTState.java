@@ -5,9 +5,8 @@ import net.darkblade.deluxelib.entity.ai.cortex.StateEnum;
 /**
  * The Grand Tyrant's combat states.
  *
- * <p>All seven are declared from the start even though module 1 only wires {@code WANDER}: the enum
- * costs nothing and it means the later modules add behaviours without touching this file. The ids are
- * explicit and stable because {@code CortexMonster} syncs the current state to the client as an int.
+ * <p>The ids are explicit and stable because {@code CortexMonster} syncs the current state to the
+ * client as an int.
  */
 public enum GTState implements StateEnum {
     WANDER(0),

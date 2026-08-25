@@ -53,9 +53,8 @@ import java.util.EnumSet;
  * ({@code TamableAnimal → Animal → AgeableMob → PathfinderMob}). Java has one superclass, so the
  * system is brought in rather than inherited — the same call made for {@code SMOPWaterAnimal}.
  *
- * <p><b>Port note.</b> 1.20.1 flipped between walking and flying every 80 ticks and pushed a
- * bespoke {@code StoCSyncFlying} packet on each switch. Both are gone: the phases below are synced
- * entity data, so the client sees them for free and the play conditions read them on either side.
+ * <p>The phases below are synced entity data, so the client sees them for free and the play
+ * conditions read them on either side without a packet of their own.
  *
  * <p>Babies never fly. Enforced in {@link #setFlying} <em>and</em> at the gate of
  * {@link TakeoffGoal}, so a chick can neither be put in the air nor enter a half-started takeoff.
