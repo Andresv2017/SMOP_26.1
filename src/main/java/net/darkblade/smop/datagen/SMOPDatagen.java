@@ -256,6 +256,7 @@ public final class SMOPDatagen {
             add(SMOPItems.HELL_HIPPO_ARMOR.get(), "Hell Hippo Armor");
             // Registry id is "gt", which auto-derivation would render as "Gt".
             add(SMOPEntities.GT.get(), "Grand Tyrant");
+            add(SMOPItems.GT_SPAWN_EGG.get(), "Grand Tyrant Spawn Egg");
 
             // Everything else: krifto_meat -> "Krifto Meat", tango_feather -> "Tango Feather", ...
             autoItemNames(SMOPItems.ITEMS);
