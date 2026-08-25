@@ -32,9 +32,16 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // DeluxeLib is resolved from here — see the note in settings.gradle. It is listed first so a
-    // freshly published snapshot of the library always wins over anything cached remotely.
-    mavenLocal()
+    // DeluxeLib is resolved from here — see the note in settings.gradle. The content filter is not
+    // decoration: without it Gradle would ask CurseMaven for every dependency in the build before
+    // falling through to Maven Central, which CurseMaven explicitly asks consumers not to do.
+    maven {
+        name = 'CurseMaven'
+        url = 'https://cursemaven.com'
+        content {
+            includeGroup 'curse.maven'
+        }
+    }
     // Add here additional repositories if required by some of the dependencies below.
     mavenCentral()
 }
@@ -125,9 +132,12 @@ configurations {
 
 dependencies {
     // DeluxeLib — this mod's own support library (animation system, combat hitboxes, networking,
-    // rider poses, camera shake, flying base entity, ...). Resolved from mavenLocal; run
-    // `./gradlew publishToMavenLocal` in the DeluxeLib folder after changing it. See settings.gradle.
-    implementation "net.darkblade.deluxelib:deluxelib:${deluxelib_version}"
+    // rider poses, camera shake, flying base entity, ...).
+    //
+    // A CurseMaven coordinate is not group:name:version. It is curse.maven:<slug>-<project id>:<file
+    // id>, and the last number identifies ONE uploaded file rather than a version — so updating the
+    // library means putting the new upload's file id in gradle.properties, not raising a version.
+    implementation "curse.maven:deluxe-lib-${deluxelib_curse_project}:${deluxelib_curse_file}"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

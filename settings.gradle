@@ -10,16 +10,3 @@ plugins {
 
 rootProject.name = 'smop'
 
-// DeluxeLib is consumed as a published artifact from the local Maven repository, NOT as a composite
-// build. It used to be included here with `includeBuild('../Deluxelib-Neoforge-26.1')`, which let
-// edits to the library be picked up by the next SMOP build with no publish step — but a composite
-// build is part of this project's Gradle model, so the IDE imports the library alongside the mod and
-// shows both trees. Depending on the artifact keeps this project to itself.
-//
-// The cost is one command in the DeluxeLib folder whenever the library changes:
-//
-//     ./gradlew publishToMavenLocal
-//
-// SMOP then resolves net.darkblade.deluxelib:deluxelib:${deluxelib_version} from ~/.m2 like any
-// other dependency. If the library ever needs live co-editing again, restoring the composite is
-// putting the includeBuild back — the coordinates it substitutes are unchanged.
