@@ -17,11 +17,11 @@ import net.darkblade.smop.entity.ai.goal.SMOPFollowParentGoal;
 import net.darkblade.smop.entity.ai.goal.SMOPRandomStrollGoal;
 import net.darkblade.smop.effect.SMOPEffects;
 import net.darkblade.smop.entity.RiderControllable;
+import net.darkblade.smop.entity.rider.RiderAbilities;
 import net.darkblade.smop.entity.rider.RiderAbility;
 import net.darkblade.smop.entity.rider.RiderSteering;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Input;
-import net.minecraft.world.BossEvent;
 import net.minecraft.world.phys.Vec2;
 import net.darkblade.smop.entity.sleep.ISleepThreatEvaluator;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -93,7 +93,9 @@ import net.minecraft.world.level.ServerLevelAccessor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 public class HellHippoEntity extends GenderedSMOPAnimal
@@ -243,9 +245,8 @@ public class HellHippoEntity extends GenderedSMOPAnimal
             this.tickWeaknessSleep();
             this.tickIntimidation();
             this.tickRiddenState();
-            Player rider = RiderAbility.controllerOf(this);
-            this.fearPulse.tick(rider);
-            this.mountedAttack.tick(rider);
+            this.fearPulse.tick();
+            this.mountedAttack.tick();
         }
     }
 
@@ -516,13 +517,28 @@ public class HellHippoEntity extends GenderedSMOPAnimal
 
     private static final float RIDDEN_SPRINT_MULTIPLIER = 1.6F;
 
-    private static final int MOUNTED_ATTACK_COOLDOWN_TICKS = 60;
+    // La mordida dura 0.7 s (ATTACK_SECONDS, 14 ticks) y es el suelo real: por debajo, un ataque nuevo
+    // reiniciaría el clip a media dentellada. 20 deja seis ticks de respiro y encadena mordiscos casi
+    // sin pausa, frente a los ~2.3 s de espera muerta que dejaban los 60 de antes.
+    private static final int MOUNTED_ATTACK_COOLDOWN_TICKS = 20;
+
+    // Los tintes con los que el HUD pinta cada barra. Recogen la semántica que tenían las boss bars
+    // vanilla — morado para Fear, rojo para Charge — porque la barra no lleva nombre escrito y el
+    // color es lo único que distingue una habilidad de otra en la pila.
+    private static final int FEAR_TINT = 0xFFC050FF;
+    private static final int MOUNTED_ATTACK_TINT = 0xFFFF0000;
 
     private final RiderAbility fearPulse =
-            new RiderAbility(this, "Fear", FEAR_COOLDOWN_TICKS, BossEvent.BossBarColor.PURPLE);
+            new RiderAbility("fear", FEAR_COOLDOWN_TICKS, FEAR_TINT);
 
     private final RiderAbility mountedAttack =
-            new RiderAbility(this, "Charge", MOUNTED_ATTACK_COOLDOWN_TICKS, BossEvent.BossBarColor.RED);
+            new RiderAbility("charge", MOUNTED_ATTACK_COOLDOWN_TICKS, MOUNTED_ATTACK_TINT);
+
+    // De abajo a arriba: el ataque pegado a la hotbar, porque es el que se mira a cada golpe.
+    @Override
+    public @NotNull List<RiderAbility> riderAbilities() {
+        return List.of(this.mountedAttack, this.fearPulse);
+    }
 
     @Override
     public @Nullable LivingEntity getControllingPassenger() {
@@ -586,10 +602,23 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         return super.getDismountLocationForPassenger(passenger);
     }
 
+    @Nullable
+    private UUID lastRiderId;
+
     private void tickRiddenState() {
         if (this.getControllingPassenger() instanceof ServerPlayer rider) {
             this.setSprinting(rider.getLastClientInput().sprint());
-        } else if (this.isSprinting()) {
+            // Al tomar el control, y solo entonces: el cliente arranca sin nada, así que sin esto una
+            // habilidad que ya venía recargando saldría llena. Cubre montarse a media recarga, el
+            // relog y el cambio de dimensión, que son los tres casos en los que el HUD nace vacío.
+            if (!rider.getUUID().equals(this.lastRiderId)) {
+                this.lastRiderId = rider.getUUID();
+                RiderAbilities.sync(this, rider);
+            }
+            return;
+        }
+        this.lastRiderId = null;
+        if (this.isSprinting()) {
             this.setSprinting(false);
         }
     }
@@ -605,13 +634,6 @@ public class HellHippoEntity extends GenderedSMOPAnimal
 
     private boolean isRunning() {
         return this.isAggressive() || this.isSprinting();
-    }
-
-    @Override
-    public void remove(@NotNull RemovalReason reason) {
-        this.fearPulse.hide();
-        this.mountedAttack.hide();
-        super.remove(reason);
     }
 
     private InteractionResult tryRide(Player player) {
@@ -633,17 +655,18 @@ public class HellHippoEntity extends GenderedSMOPAnimal
             return;
         }
         switch (action) {
-            case FEAR -> this.releaseFearPulse();
-            case ATTACK -> this.strikeFromSaddle();
+            case FEAR -> this.releaseFearPulse(rider);
+            case ATTACK -> this.strikeFromSaddle(rider);
             case OPEN_INVENTORY -> this.openCustomInventoryScreen(rider);
             default -> { }
         }
     }
 
-    private void releaseFearPulse() {
+    private void releaseFearPulse(ServerPlayer rider) {
         if (!this.fearPulse.tryUse()) {
             return;
         }
+        RiderAbilities.sync(this, rider);
         for (LivingEntity victim : this.level().getEntitiesOfClass(LivingEntity.class,
                 this.getBoundingBox().inflate(FEAR_PULSE_RADIUS), this::isAfraidOfMe)) {
             victim.addEffect(new MobEffectInstance(SMOPEffects.FEAR, FEAR_PULSE_DURATION_TICKS, 0));
@@ -663,10 +686,11 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         return owner == null || !(candidate instanceof TamableAnimal pet) || !pet.isOwnedBy(owner);
     }
 
-    private void strikeFromSaddle() {
+    private void strikeFromSaddle(ServerPlayer rider) {
         if (!this.mountedAttack.tryUse()) {
             return;
         }
+        RiderAbilities.sync(this, rider);
         this.animator().play(this.animator().getByName(ANIM_ATTACK));
         this.playSound(SoundEvents.HOGLIN_ATTACK, 1.0F, 1.0F);
     }

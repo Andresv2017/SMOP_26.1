@@ -33,6 +33,8 @@
 | `entity/hellhippo/HellHippoEntity.java` | Declarar sus habilidades; bajar el cooldown melee |
 | `assets/smop/textures/gui/rider_ability_bar.png` *(nuevo)* | Marco + relleno |
 | `assets/smop/textures/entity/hell_hippo/hh_testbar.png` *(se borra)* | Placeholder |
+| `tools/build-ability-bar.py` *(nuevo)* | Parte el arte de una fila en el sheet de dos e imprime las constantes |
+| `tools/art/rider_ability_bar_source.png` *(nuevo)* | El arte tal como se autorea: una sola barra encendida |
 
 ---
 
@@ -50,12 +52,13 @@ Se queda con la recarga y nada más.
 | `tintARGB` | `int` | Color con el que el HUD multiplica el relleno. Recoge la semántica que tenían las boss bars: morado para Fear, rojo para Charge |
 | `cooldownTicks` | `int` | Ya existía |
 | `remaining` | `int` | Ya existía |
-| `mount` | `Mob` | Ya existía; ahora sirve para saber a qué entidad pertenece el estado que se envía |
+
+El campo `mount` también se va: quien envía es `RiderAbilities.sync`, que ya recibe la montura, así que una habilidad no necesita saber de quién es. Con él cae `controllerOf(Mob)`, que solo servía para alimentar el `tick(rider)` de la boss bar y queda muerta.
 
 Firma nueva del constructor:
 
 ```java
-public RiderAbility(Mob mount, String id, int cooldownTicks, int tintARGB)
+public RiderAbility(String id, int cooldownTicks, int tintARGB)
 ```
 
 El parámetro `title` desaparece: era el nombre que mostraba la boss bar, y el HUD nuevo no dibuja texto.
@@ -116,9 +119,13 @@ List<Entry> entries;         // id, remaining, total, tintARGB
 ```
 
 - **`accept(packet)`** reemplaza el estado entero.
-- **`tick()`**, en `ClientTickEvent.Post`: si `Minecraft.getInstance().player` es nulo, o no va montado, o el id de su vehículo no coincide con `mountId`, limpia el estado y sale. Si coincide, decrementa cada `remaining` con suelo en 0.
+- **`tick()`**, en `ClientTickEvent.Post`: si el jugador va montado justo en `mountId`, decrementa cada `remaining` con suelo en 0. Si no, cuenta ticks sin pareja y limpia el estado al pasar de `UNMATCHED_GRACE_TICKS` (40).
 
-Esa comprobación del vehículo es la que hace innecesario el antiguo `hide()`: desmontarse, morir, cambiar de mundo o desconectar dejan de coincidir, y el estado se descarta en el tick siguiente.
+Esa comprobación del vehículo es la que hace innecesario el antiguo `hide()`: desmontarse, morir, cambiar de mundo o desconectar dejan de coincidir, y el estado se descarta.
+
+**Por qué la cortesía de 40 ticks y no un descarte inmediato.** `ServerLevel` tickea las entidades antes de la fase de seguimiento que emite `ClientboundSetPassengersPacket`. Al entrar al mundo ya montado, el estado de habilidades puede por tanto salir un tick **por delante** de la noticia de que vas montado: el cliente recibiría el paquete con `getVehicle()` todavía a nulo. Con descarte inmediato eso tira el estado y no hay un segundo envío, así que las barras saldrían llenas el resto de la sesión. La ventana lo absorbe sin añadir tráfico.
+
+- **`entries()`**, lo que lee el HUD, devuelve vacío salvo que el jugador vaya montado en `mountId` justo en ese momento. Se comprueba al pintar y no se confía en una bandera del tick anterior: durante la ventana de cortesía el estado existe pero no debe dibujarse.
 
 - **`progress(Entry)`** devuelve `1.0F` si `total <= 0`, si no `1.0F - (float) remaining / total`. **Se llena mientras se recupera**, igual que hacía la boss bar: una barra llena se lee como "lista", no como "gastada".
 
@@ -140,7 +147,11 @@ v = BAR_H    fila 1: solo el relleno, alineado píxel a píxel con la fila 0
 
 Que las dos filas estén alineadas es lo que permite recortar el relleno con las mismas coordenadas que el marco: no hacen falta offsets de origen distintos, solo saber dónde cae el canal.
 
-**Constantes.** `BAR_WIDTH`, `BAR_HEIGHT`, `SHEET_WIDTH` y `SHEET_HEIGHT` salen de las dimensiones reales del PNG. `INNER_X`, `INNER_Y`, `INNER_WIDTH` e `INNER_HEIGHT` describen el rectángulo del canal interior en coordenadas locales de la barra, y se derivan midiendo en la fila 1 la caja delimitadora de los píxeles no transparentes. Esa medición es la primera tarea del plan y sus cuatro valores quedan escritos como constantes; no se estiman a ojo.
+**El sheet va en escala de grises.** El HUD multiplica cada fila por un color, y el arte es rojo puro `(R, 0, 0)`: multiplicarlo por morado sigue dando rojo, solo que más oscuro. En gris, el tinte `FRAME_TINT = 0xFFFF0000` devuelve el arte original píxel a píxel, y el relleno acepta cualquier color.
+
+**Constantes medidas.** `BAR_WIDTH = 190`, `BAR_HEIGHT = 26`, sheet `256 × 64` (potencia de dos, con la fila de relleno en `v = 26`). Canal interior: `INNER_X = 5`, `INNER_Y = 11`, `INNER_WIDTH = 180`, `INNER_HEIGHT = 3`. Las imprime `tools/build-ability-bar.py`; no se estiman a ojo. Si se retoca el arte, se vuelve a correr el script y se copian de su salida.
+
+El script separa las dos filas a partir del arte de una sola: la tira encendida son las filas 11–13 con canal rojo ≥ 90, menos el hueco de la calavera (`x 92..97`), que se localiza en la fila 12 — la única donde la silueta corta la tira limpia, ya que en la de abajo asoman los dientes encendidos. Lo que cae en la tira se apaga al `0.22` para la fila del marco.
 
 **Dibujado, por cada entrada `i` de abajo a arriba:**
 
@@ -177,6 +188,8 @@ Con `./gradlew compileJava` en verde:
 5. Salir del mundo y volver a entrar montado con un cooldown corriendo: mismo resultado que el punto 4.
 6. Mirar el marco durante la recarga: los remates de los extremos se ven enteros en todo momento.
 
-## Dependencia externa
+## El arte
 
-El PNG lo aporta el usuario en `src/main/resources/assets/smop/textures/gui/rider_ability_bar.png`. Si llega solo con el marco, la fila de relleno se añade sobre él antes de medir las constantes de §5. El plan de implementación no puede cerrar la tarea de constantes sin ese fichero.
+El arte se autorea como **una sola barra encendida** — marco, remates, calavera central y la tira roja segmentada — y vive en `tools/art/rider_ability_bar_source.png`. `tools/build-ability-bar.py` lo parte en el sheet de dos filas que consume el HUD.
+
+Separarlo a mano cada vez que se retoca es donde se cuela el desalineo de un píxel que nadie ve hasta que la barra va por la mitad; por eso el paso es un script y no una capa de Photoshop. Está verificado: marco tintado de rojo más relleno al 100 % reconstruye el arte original sin una sola diferencia.
