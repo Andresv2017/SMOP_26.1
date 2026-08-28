@@ -534,7 +534,8 @@ public class HellHippoEntity extends GenderedSMOPAnimal
     private final RiderAbility mountedAttack =
             new RiderAbility("charge", MOUNTED_ATTACK_COOLDOWN_TICKS, MOUNTED_ATTACK_TINT);
 
-    // De abajo a arriba: el ataque pegado a la hotbar, porque es el que se mira a cada golpe.
+    // El ataque en la mitad izquierda, porque se recarga en un segundo y se mira a cada golpe: es
+    // donde cae la vista primero.
     @Override
     public @NotNull List<RiderAbility> riderAbilities() {
         return List.of(this.mountedAttack, this.fearPulse);

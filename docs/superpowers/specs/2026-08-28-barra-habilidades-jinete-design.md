@@ -28,7 +28,7 @@
 | `network/packet/RiderAbilityStateClientPacket.java` *(nuevo)* | Servidor→jinete: estado completo de las habilidades de su montura |
 | `network/SMOPNetwork.java` | Registrar el paquete nuevo |
 | `client/rider/RiderAbilityTracker.java` *(nuevo)* | Cliente: guarda el último estado y lo descuenta por tick |
-| `client/rider/RiderAbilityHud.java` *(nuevo)* | Cliente: dibuja una barra por habilidad sobre la hotbar |
+| `client/rider/RiderAbilityHud.java` *(nuevo)* | Cliente: dibuja la barra, una mitad por habilidad |
 | `client/hellhippo/HellHippoRiderHud.java` *(se borra)* | Absorbido por `RiderAbilityHud` |
 | `entity/hellhippo/HellHippoEntity.java` | Declarar sus habilidades; bajar el cooldown melee |
 | `assets/smop/textures/gui/rider_ability_bar.png` *(nuevo)* | Marco + relleno |
@@ -65,11 +65,9 @@ El parámetro `title` desaparece: era el nombre que mostraba la boss bar, y el H
 
 **`tryUse()`** conserva la guarda de `isReady()` y fija `remaining = cooldownTicks`. No envía nada: una habilidad no conoce a sus hermanas, y el paquete lleva el estado de todas — quien reenvía es la montura, tras ver que `tryUse()` devolvió `true` (§3).
 
-**`tick(Player rider)`** solo decrementa. Toda la gestión de `watcher` — añadir y quitar jugadores de la boss bar — desaparece.
+**`tick()`** solo decrementa, y pierde el parámetro `rider`: solo existía para decidir a quién enseñarle la boss bar. Toda la gestión de `watcher` — añadir y quitar jugadores — desaparece con ella.
 
 **`save`/`load`** no cambian. El NBT (`FearCooldown`, `AttackCooldown`) se mantiene, así que los hipopótamos ya guardados cargan sin migración.
-
-**`controllerOf(Mob)`** se mantiene tal cual; `HellHippoEntity.tick()` la sigue usando.
 
 ## 2. Contrato — `RiderControllable`
 
@@ -79,7 +77,7 @@ default List<RiderAbility> riderAbilities() {
 }
 ```
 
-El orden de la lista es el orden de apilado en pantalla, de abajo a arriba: el índice 0 es la barra pegada a la hotbar. `HellHippoEntity` devuelve `List.of(mountedAttack, fearPulse)` — el ataque abajo, porque es el que se mira a cada golpe, y Fear encima.
+El orden de la lista es el orden en pantalla, de izquierda a derecha: el índice 0 se queda con la mitad izquierda de la barra y el 1 con la derecha. `HellHippoEntity` devuelve `List.of(mountedAttack, fearPulse)` — el ataque a la izquierda, porque se recarga en un segundo y es el que se mira a cada golpe.
 
 El default vacío es lo que hace que el cambio sea inocuo para una montura que solo quiera `onRiderAction`.
 
@@ -149,25 +147,31 @@ Que las dos filas estén alineadas es lo que permite recortar el relleno con las
 
 **El sheet va en escala de grises.** El HUD multiplica cada fila por un color, y el arte es rojo puro `(R, 0, 0)`: multiplicarlo por morado sigue dando rojo, solo que más oscuro. En gris, el tinte `FRAME_TINT = 0xFFFF0000` devuelve el arte original píxel a píxel, y el relleno acepta cualquier color.
 
-**Constantes medidas.** `BAR_WIDTH = 190`, `BAR_HEIGHT = 26`, sheet `256 × 64` (potencia de dos, con la fila de relleno en `v = 26`). Canal interior: `INNER_X = 5`, `INNER_Y = 11`, `INNER_WIDTH = 180`, `INNER_HEIGHT = 3`. Las imprime `tools/build-ability-bar.py`; no se estiman a ojo. Si se retoca el arte, se vuelve a correr el script y se copian de su salida.
+**Constantes medidas.** `BAR_WIDTH = 190`, `BAR_HEIGHT = 26`, sheet `256 × 64` (potencia de dos, con la fila de relleno en `v = 26`). Canal interior: `INNER_Y = 11`, `INNER_HEIGHT = 3`, partido por el hueco de la calavera (`x 92..97`) en dos mitades exactas — `LEFT_X = 5` y `RIGHT_X = 98`, ambas de `HALF_WIDTH = 87`. Las imprime `tools/build-ability-bar.py`; no se estiman a ojo. Si se retoca el arte, se vuelve a correr el script y se copian de su salida.
 
 El script separa las dos filas a partir del arte de una sola: la tira encendida son las filas 11–13 con canal rojo ≥ 90, menos el hueco de la calavera (`x 92..97`), que se localiza en la fila 12 — la única donde la silueta corta la tira limpia, ya que en la de abajo asoman los dientes encendidos. Lo que cae en la tira se apaga al `0.22` para la fila del marco.
 
-**Dibujado, por cada entrada `i` de abajo a arriba:**
+**Una barra, no una pila.** El primer intento apilaba una barra por habilidad sobre la hotbar y en juego se comía la altura de la vida de la montura: dos barras de 26 px encima de una zona que vanilla ya tiene ocupada. El arte da la salida — es simétrico y su canal interior ya viene cortado en dos mitades iguales por la calavera, así que cada habilidad se queda con una y la barra sigue leyéndose como una pieza.
+
+Con **una sola** habilidad se refleja en las dos mitades: media barra encendida se leería como una avería. De la **tercera** en adelante no caben, y una montura que quiera más necesita otro arte, no otra fila aquí.
+
+**Posición.** Vanilla apila hacia arriba desde el borde inferior: la hotbar, la fila de salud en `guiHeight - 39`, otros 10 px si el jugador lleva armadura, 10 por cada fila de corazones de la montura y 10 más de burbujas al bucear — y el hipopótamo nada. `VANILLA_STATUS_HEIGHT = 59` cubre el peor caso de un jinete con armadura sumergido sobre una montura de una fila de corazones, que es lo que hay hoy (20 de vida ⇒ 10 corazones ⇒ una fila).
 
 ```
 x = (guiWidth - BAR_WIDTH) / 2
-y = guiHeight - HOTBAR_HEIGHT - GAP - (i + 1) * (BAR_HEIGHT + BAR_GAP)
+y = guiHeight - VANILLA_STATUS_HEIGHT - GAP - CONTENT_BOTTOM
 ```
 
-con `HOTBAR_HEIGHT = 22` y `GAP = 2` como hoy, y `BAR_GAP = 2` entre barras.
+con `GAP = 2` y `CONTENT_BOTTOM = 20`, que es donde acaba el contenido del arte: el PNG deja transparentes las filas 0-2 y 20-25, así que anclar por el borde del fichero dejaría un hueco muerto debajo.
 
-1. **Marco:** `blit` de la fila 0 completa en `(x, y)`.
-2. **Relleno:** ancho `Math.round(INNER_WIDTH * progress)`; si sale 0, se omite. `blit` de la fila 1 desde `(INNER_X, BAR_HEIGHT + INNER_Y)` a `(x + INNER_X, y + INNER_Y)`, con ese ancho y alto `INNER_HEIGHT`, multiplicado por `tintARGB`.
+**Dibujado:**
 
-El marco va debajo y siempre entero, así que los remates de los extremos no se cortan nunca — que es la razón de partir la textura en dos filas en vez de tener una versión vacía y otra llena.
+1. **Marco:** `blit` de la fila 0 completa en `(x, y)`, teñido con `FRAME_TINT`.
+2. **Cada mitad:** ancho `Math.round(HALF_WIDTH * progress)`; si sale 0, se omite. Crece **desde la calavera hacia su remate** — la izquierda hacia la izquierda, la derecha hacia la derecha — así que lo último que se enciende es el gancho del extremo y el instante en que la habilidad queda lista tiene un remate visible. Como las dos filas comparten encuadre, la `u` de origen es siempre la misma `x` local que el destino.
 
-El HUD no dibuja texto. Las habilidades se distinguen por su tinte y por su posición fija en la pila.
+El marco va debajo y siempre entero, así que los remates de los extremos y la calavera no se cortan nunca — que es la razón de partir la textura en dos filas en vez de tener una versión vacía y otra llena.
+
+El HUD no dibuja texto. Las habilidades se distinguen por su tinte y por su lado fijo de la barra.
 
 ## 6. Cooldown del melee montado
 
@@ -181,10 +185,10 @@ La animación de mordida (`ATTACK_SECONDS = 0.7F`, 14 ticks) es el suelo real: p
 
 Con `./gradlew compileJava` en verde:
 
-1. Montar el hipopótamo: aparecen dos barras apiladas sobre la hotbar, ambas llenas, y **ninguna boss bar arriba**.
-2. Atacar: la barra de abajo se vacía de golpe y se rellena en 1 segundo. Encadenar mordiscos y confirmar que la animación no se corta.
-3. Usar Fear: la barra de arriba se vacía y tarda 15 segundos. Comprobar que ambas recargan a la vez sin pisarse.
-4. Desmontarse en pleno cooldown: las barras desaparecen. Volver a montar de inmediato: reaparecen **con el tiempo que quedaba**, no llenas.
+1. Montar el hipopótamo: aparece **una** barra, entera y encendida, y **ninguna boss bar arriba**. No pisa la vida del hipopótamo ni la barra de salud: con armadura puesta y bajo el agua sigue habiendo hueco.
+2. Atacar: la mitad **izquierda** se apaga de golpe y vuelve a encenderse en 1 segundo, creciendo desde la calavera hacia el remate izquierdo. Encadenar mordiscos y confirmar que la animación no se corta.
+3. Usar Fear: la mitad **derecha** se apaga y tarda 15 segundos. Comprobar que las dos mitades recargan a la vez sin pisarse.
+4. Desmontarse en pleno cooldown: la barra desaparece. Volver a montar de inmediato: reaparece **con el tiempo que quedaba**, no llena.
 5. Salir del mundo y volver a entrar montado con un cooldown corriendo: mismo resultado que el punto 4.
 6. Mirar el marco durante la recarga: los remates de los extremos se ven enteros en todo momento.
 
