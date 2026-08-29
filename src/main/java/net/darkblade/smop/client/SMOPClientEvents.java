@@ -1,6 +1,9 @@
 package net.darkblade.smop.client;
 
 import net.darkblade.smop.SMOP;
+import net.darkblade.smop.block.SMOPBlockEntities;
+import net.darkblade.smop.client.gt.GTHeadBlockRenderer;
+import net.darkblade.smop.client.gt.GTHeadModel;
 import net.darkblade.smop.client.hellhippo.HellHippoBabyModel;
 import net.darkblade.smop.client.hellhippo.HellHippoModel;
 import net.darkblade.smop.client.hellhippo.HellHippoRenderer;
@@ -44,6 +47,7 @@ public final class SMOPClientEvents {
         event.registerLayerDefinition(NirasBabyModel.LAYER_LOCATION, NirasBabyModel::createBodyLayer);
         event.registerLayerDefinition(NirasSpearModel.LAYER_LOCATION, NirasSpearModel::createLayer);
         event.registerLayerDefinition(GTModel.LAYER_LOCATION, GTModel::createBodyLayer);
+        event.registerLayerDefinition(GTHeadModel.LAYER_LOCATION, GTHeadModel::createBodyLayer);
     }
 
     @SubscribeEvent
@@ -56,6 +60,7 @@ public final class SMOPClientEvents {
         event.registerEntityRenderer(SMOPEntities.TANGO_ARROW.get(), TangoArrowRenderer::new);
         event.registerEntityRenderer(SMOPEntities.NIRAS_SPEAR.get(), NirasSpearRenderer::new);
         event.registerEntityRenderer(SMOPEntities.GT.get(), GTRenderer::new);
+        event.registerBlockEntityRenderer(SMOPBlockEntities.GT_HEAD.get(), GTHeadBlockRenderer::new);
     }
 
     @SubscribeEvent

@@ -1,6 +1,7 @@
 package net.darkblade.smop;
 
 import com.mojang.logging.LogUtils;
+import net.darkblade.smop.block.SMOPBlockEntities;
 import net.darkblade.smop.block.SMOPBlocks;
 import net.darkblade.smop.datagen.SMOPDatagen;
 import net.darkblade.smop.effect.SMOPEffects;
@@ -23,9 +24,8 @@ public class SMOP {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public SMOP(IEventBus modEventBus, ModContainer modContainer) {
-        // Blocks before items: the egg block items register onto SMOPItems.ITEMS, so touching
-        // SMOPBlocks first runs its static initialisers while that register is still collecting.
         SMOPBlocks.register(modEventBus);
+        SMOPBlockEntities.register(modEventBus);
         SMOPItems.register(modEventBus);
         SMOPEntities.register(modEventBus);
         SMOPEffects.register(modEventBus);
@@ -33,12 +33,8 @@ public class SMOP {
 
         SMOPNetwork.register(modEventBus);
 
-        // Not a registry: fills DeluxeLib's in-memory spawn list, which server datagen turns into
-        // the neoforge:add_spawns biome modifiers. Without it the mobs have spawn placement rules
-        // but are in no biome's spawner list, so they never appear naturally.
         SMOPSpawns.register();
 
-        // GatherDataEvent is abstract in 26.1 — listen on the concrete Client/Server subclasses.
         modEventBus.addListener(SMOPDatagen::gatherClientData);
         modEventBus.addListener(SMOPDatagen::gatherServerData);
     }

@@ -1,6 +1,5 @@
 package net.darkblade.smop.datagen;
 
-import net.darkblade.deluxelib.datagen.DeluxeEntityLootProvider;
 import net.darkblade.deluxelib.datagen.DeluxeEntityLootSubProvider;
 import net.darkblade.deluxelib.datagen.DeluxeLangProvider;
 import net.darkblade.deluxelib.spawn.DeluxeBiomeSpawnProvider;
@@ -11,24 +10,31 @@ import net.darkblade.smop.item.SMOPItems;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.DataGenerator;
 import net.minecraft.data.PackOutput;
+import net.minecraft.data.loot.BlockLootSubProvider;
+import net.minecraft.data.loot.LootTableProvider;
 import net.minecraft.data.recipes.RecipeCategory;
 import net.minecraft.data.recipes.RecipeOutput;
 import net.minecraft.data.recipes.RecipeProvider;
 import net.minecraft.data.recipes.SimpleCookingRecipeBuilder;
 import net.minecraft.data.recipes.SmithingTransformRecipeBuilder;
+import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CookingBookCategory;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.ItemLike;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.storage.loot.LootPool;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.entries.LootItem;
 import net.minecraft.world.level.storage.loot.functions.SetItemCountFunction;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
 import net.minecraft.world.level.storage.loot.providers.number.ConstantValue;
 import net.minecraft.world.level.storage.loot.providers.number.UniformGenerator;
 import net.neoforged.neoforge.data.event.GatherDataEvent;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 public final class SMOPDatagen {
@@ -43,17 +49,12 @@ public final class SMOPDatagen {
         DataGenerator generator = event.getGenerator();
         PackOutput output = generator.getPackOutput();
         CompletableFuture<HolderLookup.Provider> registries = event.getLookupProvider();
-        generator.addProvider(true, new EntityLoot(output, registries));
+        generator.addProvider(true, new LootTableProvider(output, Set.of(),
+                List.of(new LootTableProvider.SubProviderEntry(Loot::new, LootContextParamSets.ENTITY),
+                        new LootTableProvider.SubProviderEntry(BlockLoot::new, LootContextParamSets.BLOCK)),
+                registries));
         generator.addProvider(true, new Recipes(output, registries));
-        // Writes every entry SMOPSpawns submitted as a neoforge:add_spawns biome modifier. Filters
-        // by namespace internally, so DeluxeLib's own test mobs never leak into smop's datapack.
         generator.addProvider(true, new DeluxeBiomeSpawnProvider(output, SMOP.MOD_ID));
-    }
-
-    private static final class EntityLoot extends DeluxeEntityLootProvider {
-        EntityLoot(PackOutput output, CompletableFuture<HolderLookup.Provider> registries) {
-            super(output, registries, Loot::new);
-        }
     }
 
     private static final class Loot extends DeluxeEntityLootSubProvider {
@@ -63,7 +64,6 @@ public final class SMOPDatagen {
 
         @Override
         protected void addLootTables() {
-            // 1–2 legs and a feather, both rolled independently.
             this.add(SMOPEntities.TANGOFTERO.get(), LootTable.lootTable()
                     .withPool(LootPool.lootPool()
                             .setRolls(ConstantValue.exactly(1))
@@ -74,7 +74,6 @@ public final class SMOPDatagen {
                             .add(LootItem.lootTableItem(SMOPItems.TANGO_FEATHER.get())
                                     .apply(SetItemCountFunction.setCount(UniformGenerator.between(0.0F, 2.0F))))));
 
-            // Wing and a little meat.
             this.add(SMOPEntities.KRIFTOGNATHUS.get(), LootTable.lootTable()
                     .withPool(LootPool.lootPool()
                             .setRolls(ConstantValue.exactly(1))
@@ -85,23 +84,11 @@ public final class SMOPDatagen {
                             .add(LootItem.lootTableItem(SMOPItems.KRIFTO_WING.get())
                                     .apply(SetItemCountFunction.setCount(UniformGenerator.between(0.0F, 2.0F))))));
 
-            // Without this table the animal drops nothing at all, which leaves both
-            // HELL_HIPPO_RAW_MEAT and HELL_HIPPO_COOKED_MEAT unobtainable in survival — the cooked one
-            // being the mod's own creative-tab icon.
             this.add(SMOPEntities.HELL_HIPPO.get(), LootTable.lootTable()
                     .withPool(LootPool.lootPool()
                             .setRolls(ConstantValue.exactly(1))
                             .add(LootItem.lootTableItem(SMOPItems.HELL_HIPPO_RAW_MEAT.get()))));
 
-            // Meat and the beak, rolled independently, following the Kriftognathus' shape: the cut you
-            // butcher an animal for plus the one distinctive part of it.
-            //
-            // Without it NIRASMO_MEAT and NIRASMO_BEAK are unobtainable in survival while sitting in
-            // the creative tab, so the drop is what makes that tab honest.
-            //
-            // 1-2 meat off a three-block animal, against the Hell Hippo's flat 1: this one is longer
-            // than the hippo is wide. The beak is 0-1 rather than the wing's 0-2, because an animal has
-            // one beak — the Kriftognathus has two wings, and its table says so.
             this.add(SMOPEntities.NIRASMOSAURUS.get(), LootTable.lootTable()
                     .withPool(LootPool.lootPool()
                             .setRolls(ConstantValue.exactly(1))
@@ -112,12 +99,39 @@ public final class SMOPDatagen {
                             .add(LootItem.lootTableItem(SMOPItems.NIRASMO_BEAK.get())
                                     .apply(SetItemCountFunction.setCount(UniformGenerator.between(0.0F, 1.0F))))));
 
-            // One fillet per fish.
             this.add(SMOPEntities.SALMON.get(), LootTable.lootTable()
                     .withPool(LootPool.lootPool()
                             .setRolls(ConstantValue.exactly(1))
                             .add(LootItem.lootTableItem(SMOPItems.RAW_SALMON.get())
                                     .apply(SetItemCountFunction.setCount(ConstantValue.exactly(1.0F))))));
+
+            this.add(SMOPEntities.GT.get(), LootTable.lootTable()
+                    .withPool(LootPool.lootPool()
+                            .setRolls(ConstantValue.exactly(1))
+                            .add(LootItem.lootTableItem(SMOPItems.GT_HEAD.get()))));
+        }
+    }
+
+    private static final class BlockLoot extends BlockLootSubProvider {
+
+        BlockLoot(HolderLookup.Provider registries) {
+            super(Set.of(), FeatureFlags.REGISTRY.allFlags(), registries);
+        }
+
+        @Override
+        protected void generate() {
+            this.dropWhenSilkTouch(SMOPBlocks.TANGOFTERO_EGG.get());
+            this.dropWhenSilkTouch(SMOPBlocks.KRIFTO_EGG.get());
+            this.dropWhenSilkTouch(SMOPBlocks.NIRAS_EGG.get());
+            this.dropWhenSilkTouch(SMOPBlocks.SALMON_ROE_EGGS.get());
+            this.dropSelf(SMOPBlocks.GT_HEAD.get());
+        }
+
+        @Override
+        protected @NotNull Iterable<Block> getKnownBlocks() {
+            return SMOPBlocks.BLOCKS.getEntries().stream()
+                    .map(holder -> (Block) holder.value())
+                    .toList();
         }
     }
 
@@ -152,9 +166,6 @@ public final class SMOPDatagen {
 
         @Override
         protected void buildRecipes() {
-            // Five cuts of meat, three appliances each. Four of the five results were unobtainable in
-            // survival until this line — including hell_hippo_cooked_meat, which the creative tab uses
-            // as its own icon.
             cooking(SMOPItems.HELL_HIPPO_RAW_MEAT.get(), SMOPItems.HELL_HIPPO_COOKED_MEAT.get(),
                     "hell_hippo_cooked_meat");
             cooking(SMOPItems.KRIFTO_MEAT.get(), SMOPItems.COOKED_KRIFTO_MEAT.get(),
@@ -163,14 +174,9 @@ public final class SMOPDatagen {
                     "cooked_tango_leg");
             cooking(SMOPItems.NIRASMO_MEAT.get(), SMOPItems.COOKED_NIRASMO_MEAT.get(),
                     "cooked_nirasmo_meat");
-            // The odd one out: the mod's raw salmon cooks into VANILLA's cooked salmon rather than a
-            // smop item of its own, which is why its ids carry the _from_raw_salmon that the other
-            // four do not need.
             cooking(SMOPItems.RAW_SALMON.get(), Items.COOKED_SALMON,
                     "cooked_salmon_from_raw_salmon");
 
-            // Bowl, cooked meat, a wing and a carrot. Unlocked by the wing: it is the one ingredient
-            // that says you have actually met a Kriftognathus.
             this.shapeless(RecipeCategory.FOOD, SMOPItems.KRIFTO_STEW.get())
                     .requires(Items.BOWL)
                     .requires(SMOPItems.COOKED_KRIFTO_MEAT.get())
@@ -179,14 +185,6 @@ public final class SMOPDatagen {
                     .unlockedBy(getHasName(SMOPItems.KRIFTO_WING.get()), this.has(SMOPItems.KRIFTO_WING.get()))
                     .save(this.output);
 
-            // Without a recipe the arrow is creative-tab only, and nothing else drops it either.
-            // Vanilla's own arrow — flint, stick, feather, four out — is the shape to borrow, and
-            // borrowing it verbatim is the point: this arrow is mechanically identical
-            // to minecraft:arrow (see TangoArrowEntity), so charging more for it would be a tax on
-            // using the pretty one, and charging less would make Tangoftero feathers the arrow meta.
-            // Same cost, different feather.
-            //
-            // If this is unwanted, deleting this one block is the whole undo.
             this.shaped(RecipeCategory.COMBAT, SMOPItems.TANGO_ARROW.get(), 4)
                     .pattern("X")
                     .pattern("#")
@@ -197,8 +195,6 @@ public final class SMOPDatagen {
                     .unlockedBy(getHasName(SMOPItems.TANGO_FEATHER.get()), this.has(SMOPItems.TANGO_FEATHER.get()))
                     .save(this.output);
 
-            // The javelin: a beak on two sticks, laid diagonally. One per craft, and the
-            // stack caps at four, so arming yourself costs four beaks off four Nirasmosaurus.
             this.shaped(RecipeCategory.COMBAT, SMOPItems.NIRAS_SPEAR.get())
                     .pattern("  A")
                     .pattern(" B ")
@@ -208,8 +204,6 @@ public final class SMOPDatagen {
                     .unlockedBy(getHasName(SMOPItems.NIRASMO_BEAK.get()), this.has(SMOPItems.NIRASMO_BEAK.get()))
                     .save(this.output);
 
-            // Netherite-tier barding, upgraded off gold horse armour. Both vanilla ingredients still
-            // exist in 26.1 under the same ids, so this ports across untouched.
             SmithingTransformRecipeBuilder.smithing(
                             Ingredient.of(Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE),
                             Ingredient.of(Items.GOLDEN_HORSE_ARMOR),
@@ -249,16 +243,12 @@ public final class SMOPDatagen {
 
         @Override
         protected void addTranslations() {
-            // Manual overrides: names auto-derivation would get wrong.
             add(SMOPItems.COOKED_NIRASMO_MEAT.get(), "Nirasmo Cooked Meat");
-            // Registry id is "hellhippo_armor", one word: auto-derivation would call it
-            // "Hellhippo Armor".
             add(SMOPItems.HELL_HIPPO_ARMOR.get(), "Hell Hippo Armor");
-            // Registry id is "gt", which auto-derivation would render as "Gt".
             add(SMOPEntities.GT.get(), "Grand Tyrant");
             add(SMOPItems.GT_SPAWN_EGG.get(), "Grand Tyrant Spawn Egg");
+            add(SMOPBlocks.GT_HEAD.get(), "Grand Tyrant Head");
 
-            // Everything else: krifto_meat -> "Krifto Meat", tango_feather -> "Tango Feather", ...
             autoItemNames(SMOPItems.ITEMS);
             autoBlockNames(SMOPBlocks.BLOCKS);
             autoEntityNames(SMOPEntities.ENTITY_TYPES);
@@ -270,7 +260,6 @@ public final class SMOPDatagen {
             add("subtitles.gt_roar", "Grand Tyrant roars");
             add("subtitles.krifto_squawk", "Kriftognathus squawks");
 
-            // Keybinds. The category key is derived from its Identifier: key.category.<ns>.<path>.
             add("key.category.smop.main", "Spectacular Mobs of Peligoro");
             add("key.smop.attack", "Mounted Attack");
             add("key.smop.fear", "Intimidate");

@@ -88,6 +88,9 @@ public final class SMOPItems {
     public static final DeferredItem<net.minecraft.world.item.BlockItem> NIRAS_EGG =
             ITEMS.registerSimpleBlockItem("niras_egg", SMOPBlocks.NIRAS_EGG);
 
+    public static final DeferredItem<net.minecraft.world.item.BlockItem> GT_HEAD =
+            ITEMS.registerSimpleBlockItem("gt_head", SMOPBlocks.GT_HEAD);
+
     // ───────────────────────────────────────────────────── DIG DROPS ─────
 
     public static final java.util.List<Item> RELIC_DIG_DROPS = java.util.List.of(
@@ -208,6 +211,9 @@ public final class SMOPItems {
                         output.accept(KRIFTO_EGG.get());
                         output.accept(SALMON_ROE_EGGS.get());
                         output.accept(NIRAS_EGG.get());
+
+                        // TROPHY
+                        output.accept(GT_HEAD.get());
 
                         // SPAWN EGGS
                         output.accept(TANGOFTERO_SPAWN_EGG.get());

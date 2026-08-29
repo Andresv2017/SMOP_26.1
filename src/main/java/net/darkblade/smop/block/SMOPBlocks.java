@@ -5,6 +5,7 @@ import net.darkblade.smop.entity.SMOPEntities;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.material.MapColor;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -33,6 +34,14 @@ public final class SMOPBlocks {
             BLOCKS.registerBlock("niras_egg",
                     props -> new EggBlock(SMOPEntities.NIRASMOSAURUS, 600, 8, 10, props),
                     () -> BlockBehaviour.Properties.ofFullCopy(Blocks.TURTLE_EGG).noOcclusion());
+
+    public static final DeferredBlock<GTHeadBlock> GT_HEAD =
+            BLOCKS.registerBlock("gt_head",
+                    GTHeadBlock::new,
+                    () -> BlockBehaviour.Properties.of()
+                            .mapColor(MapColor.STONE)
+                            .strength(1.0F)
+                            .noOcclusion());
 
     public static void register(IEventBus modEventBus) {
         BLOCKS.register(modEventBus);
