@@ -180,7 +180,12 @@ public class HellHippoEntity extends GenderedSMOPAnimal
                 .add(Attributes.FOLLOW_RANGE, 28.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.250D)
                 .add(Attributes.ATTACK_SPEED, 0.250D)
-                .add(Attributes.ATTACK_DAMAGE, 2.0D)
+                // 6.0 y no los 2.0 de antes: con el cooldown de 18 ticks del goal salvaje y los 20
+                // del ataque montado, 2.0 dejaba el mordisco en ~2 de daño por segundo — un corazón,
+                // menos que un zombi, para un animal de 20 HP que además es montura. 6.0 es el oso
+                // polar de vanilla, el análogo más cercano: mamífero grande, semiacuático y agresivo
+                // que muerde una vez por segundo.
+                .add(Attributes.ATTACK_DAMAGE, 6.0D)
                 .add(Attributes.ATTACK_KNOCKBACK, 0.5D)
                 .add(Attributes.ARMOR_TOUGHNESS, 0.1D)
                 .add(Attributes.ARMOR)
