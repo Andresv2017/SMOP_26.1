@@ -154,6 +154,8 @@ public class HellHippoEntity extends GenderedSMOPAnimal
     private static final int SEAWEED_GROWTH_TICKS = 200;
     private static final int SEAWEED_SHEAR_BLOCK_TICKS = 100;
 
+    private static final double SWIM_EFFICIENCY = 0.45D;
+
     private static final double SINK_ACCELERATION = 0.03D;
     private static final double SWIM_CLIMB_GAIN = 0.1D;
 
@@ -176,21 +178,16 @@ public class HellHippoEntity extends GenderedSMOPAnimal
 
     public static AttributeSupplier.Builder createAttributes() {
         return Animal.createAnimalAttributes()
-                .add(Attributes.MAX_HEALTH, 20.0D)
+                .add(Attributes.MAX_HEALTH, 40.0D)
                 .add(Attributes.FOLLOW_RANGE, 28.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.250D)
                 .add(Attributes.ATTACK_SPEED, 0.250D)
-                // 6.0 y no los 2.0 de antes: con el cooldown de 18 ticks del goal salvaje y los 20
-                // del ataque montado, 2.0 dejaba el mordisco en ~2 de daño por segundo — un corazón,
-                // menos que un zombi, para un animal de 20 HP que además es montura. 6.0 es el oso
-                // polar de vanilla, el análogo más cercano: mamífero grande, semiacuático y agresivo
-                // que muerde una vez por segundo.
-                .add(Attributes.ATTACK_DAMAGE, 6.0D)
+                .add(Attributes.ATTACK_DAMAGE, 10.0D)
                 .add(Attributes.ATTACK_KNOCKBACK, 0.5D)
                 .add(Attributes.ARMOR_TOUGHNESS, 0.1D)
                 .add(Attributes.ARMOR)
                 .add(Attributes.STEP_HEIGHT, 1.0)
-                .add(Attributes.WATER_MOVEMENT_EFFICIENCY, 1.0D);
+                .add(Attributes.WATER_MOVEMENT_EFFICIENCY, SWIM_EFFICIENCY);
     }
 
     @Override
@@ -522,14 +519,8 @@ public class HellHippoEntity extends GenderedSMOPAnimal
 
     private static final float RIDDEN_SPRINT_MULTIPLIER = 1.6F;
 
-    // La mordida dura 0.7 s (ATTACK_SECONDS, 14 ticks) y es el suelo real: por debajo, un ataque nuevo
-    // reiniciaría el clip a media dentellada. 20 deja seis ticks de respiro y encadena mordiscos casi
-    // sin pausa, frente a los ~2.3 s de espera muerta que dejaban los 60 de antes.
     private static final int MOUNTED_ATTACK_COOLDOWN_TICKS = 20;
 
-    // Los tintes con los que el HUD pinta cada barra. Recogen la semántica que tenían las boss bars
-    // vanilla — morado para Fear, rojo para Charge — porque la barra no lleva nombre escrito y el
-    // color es lo único que distingue una habilidad de otra en la pila.
     private static final int FEAR_TINT = 0xFFC050FF;
     private static final int MOUNTED_ATTACK_TINT = 0xFFFF0000;
 
@@ -539,8 +530,6 @@ public class HellHippoEntity extends GenderedSMOPAnimal
     private final RiderAbility mountedAttack =
             new RiderAbility("charge", MOUNTED_ATTACK_COOLDOWN_TICKS, MOUNTED_ATTACK_TINT);
 
-    // El ataque en la mitad izquierda, porque se recarga en un segundo y se mira a cada golpe: es
-    // donde cae la vista primero.
     @Override
     public @NotNull List<RiderAbility> riderAbilities() {
         return List.of(this.mountedAttack, this.fearPulse);
@@ -614,9 +603,6 @@ public class HellHippoEntity extends GenderedSMOPAnimal
     private void tickRiddenState() {
         if (this.getControllingPassenger() instanceof ServerPlayer rider) {
             this.setSprinting(rider.getLastClientInput().sprint());
-            // Al tomar el control, y solo entonces: el cliente arranca sin nada, así que sin esto una
-            // habilidad que ya venía recargando saldría llena. Cubre montarse a media recarga, el
-            // relog y el cambio de dimensión, que son los tres casos en los que el HUD nace vacío.
             if (!rider.getUUID().equals(this.lastRiderId)) {
                 this.lastRiderId = rider.getUUID();
                 RiderAbilities.sync(this, rider);
@@ -1070,15 +1056,6 @@ public class HellHippoEntity extends GenderedSMOPAnimal
         level.addFreshEntity(calf);
     }
 
-    // Mud, on top of what an animal normally accepts. Animal.checkAnimalSpawnRules asks for
-    // #minecraft:animals_spawnable_on, and that tag is one block, grass_block, so in a mangrove swamp
-    // this animal could only ever appear on the grass patches between the mud — measured at one
-    // placement check passing out of nine, the worst rate of any mob in the mod.
-    //
-    // The mangrove is where an amphibious animal this size belongs most, which is the reason the biome
-    // is in its list at all, and a hippo that will not stand on the floor of the place is not really
-    // seeded there. Muddy mangrove roots come along for the same reason: they are the other half of
-    // that floor.
     public static boolean checkHellHippoSpawnRules(EntityType<HellHippoEntity> type, ServerLevelAccessor level,
                                                    EntitySpawnReason reason, BlockPos pos, RandomSource random) {
         BlockState ground = level.getBlockState(pos.below());

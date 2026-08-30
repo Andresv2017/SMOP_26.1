@@ -40,10 +40,8 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.BossEvent;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
@@ -63,7 +61,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Set;
-import java.util.UUID;
 
 public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animatable<GTEntity>, ISleepingEntity {
 
@@ -105,20 +102,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                 .add(Attributes.STEP_HEIGHT, 2.5D);
     }
 
-    // A Grand Tyrant that walks off the loaded area is gone for good, and the measurement is what
-    // says so rather than a preference. CREATURE is a global budget of 10 that reads 83 to 155 in
-    // every biome of a fresh world, and /smop debug spawn sim attributed 100% of 8670 attempts to
-    // that one gate in four separate samples. So the periodic cycle never produces one: every GT in
-    // a world arrives during chunk generation, once, and is never replaced.
-    //
-    // requiresCustomPersistence rather than removeWhenFarAway, because it does both halves of the
-    // job. Mob#checkDespawn skips a mob that declares it, and NaturalSpawner#createState leaves it
-    // out of the category census — so a standing GT keeps its place in the world without spending
-    // any of the budget that is already several times over.
-    //
-    // The animals do not need this: Animal#removeWhenFarAway returns false, so the Tangoftero, the
-    // Kriftognathus and the Hell Hippo already stay. CortexMonster extends PathfinderMob, where the
-    // default is to despawn, which is why this mob was the only one disappearing.
     @Override
     public boolean requiresCustomPersistence() {
         return true;
@@ -136,7 +119,7 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
 
     private static final double CHASE_SPEED = 2.0D;
 
-    private static final double TARGET_RANGE = 40.0D;
+    private static final double TARGET_RANGE = 20.0D;
     private static final int GRUDGE_TICKS = 400;
 
 
@@ -154,8 +137,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                         new GTAttackSelector()))
                 .register(GTState.BITE, new AnimatedMeleeBehavior<GTEntity, GTState>(
                         "bite", BITE_TICKS, GTState.CHASE)
-                        // Facing has to be committed before the jaws start closing at frame 7, or the
-                        // hitbox and the drawn arc diverge.
                         .faceTargetUntil(6))
                 .register(GTState.HORN_SWING, new AnimatedMeleeBehavior<GTEntity, GTState>(
                         "horn_swing", HORN_SWING_TICKS, GTState.CHASE)
@@ -163,8 +144,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                 .register(GTState.CLAW_SWING, new AnimatedMeleeBehavior<GTEntity, GTState>(
                         "claw_swing", CLAW_SWING_TICKS, GTState.CHASE)
                         .faceTargetUntil(8))
-                // No faceTargetUntil: the stomp lands where the animal stands, and dodging it means
-                // moving. Tracking the target would make it undodgeable.
                 .register(GTState.STOMP, new AnimatedMeleeBehavior<GTEntity, GTState>(
                         "attack_stomp", STOMP_TICKS, GTState.CHASE))
                 .register(GTState.ROAR, new TimedAnimationBehavior<GTEntity, GTState>(
@@ -369,22 +348,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         return hurt;
     }
 
-
-    private final ServerBossEvent bossBar = new ServerBossEvent(UUID.randomUUID(), this.getDisplayName(),
-            BossEvent.BossBarColor.RED, BossEvent.BossBarOverlay.PROGRESS);
-
-    @Override
-    public void startSeenByPlayer(@NotNull ServerPlayer player) {
-        super.startSeenByPlayer(player);
-        this.bossBar.addPlayer(player);
-    }
-
-    @Override
-    public void stopSeenByPlayer(@NotNull ServerPlayer player) {
-        super.stopSeenByPlayer(player);
-        this.bossBar.removePlayer(player);
-    }
-
     @Override
     public void tick() {
         super.tick();
@@ -392,29 +355,11 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
             if (this.pendingLoneCheck && this.level() instanceof ServerLevel serverLevel) {
                 this.settleAlone(serverLevel);
             }
-            this.bossBar.setProgress(this.getHealth() / this.getMaxHealth());
         }
     }
 
     // ───────────────────────────────────────────────────── ONE TO A PLACE ─────
 
-    // One Grand Tyrant to an area. The check cannot live in the spawn rule, which is where it
-    // belongs: every GT arrives through chunk generation and WorldGenRegion#getEntities returns an
-    // empty list unconditionally, so the test would have passed every single time having seen
-    // nothing. Instead the animal is born owing the check, the debt is written to disk with it, and
-    // it is paid on the first tick after the chunk loads.
-    //
-    // What it is paid AGAINST is the part that had to be corrected. Asking the level for nearby GTs
-    // looks right and measures wrong: a level only knows about loaded entities, and two that
-    // generated three hundred blocks apart are never loaded in the same moment. In play that gave
-    // three in one plains and three in one desert, none of them ever able to see the others.
-    //
-    // GTLandmarks is a claim list in the level's save data, so it does not care what is in memory.
-    //
-    // 320 blocks is the knob. It puts one GT in roughly every 640-block square, which is wider than
-    // most biome patches, so what you get is one to a biome and some biomes without. Turn it down if
-    // they end up too thin on the ground; the spawn weight is not the lever any more, because the
-    // claim decides the outcome and the weight only decides how many candidates get turned away.
     private static final int LONE_RADIUS = 320;
 
     private static final String PENDING_LONE_CHECK = "PendingLoneCheck";
@@ -426,8 +371,6 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
                                                   @NotNull DifficultyInstance difficulty,
                                                   @NotNull EntitySpawnReason reason,
                                                   @Nullable SpawnGroupData spawnData) {
-        // Only what the world put there. A summoned or egg-spawned one is somebody's decision and
-        // does not get culled for standing next to another.
         this.pendingLoneCheck = reason == EntitySpawnReason.NATURAL
                 || reason == EntitySpawnReason.CHUNK_GENERATION;
         return super.finalizeSpawn(level, difficulty, reason, spawnData);

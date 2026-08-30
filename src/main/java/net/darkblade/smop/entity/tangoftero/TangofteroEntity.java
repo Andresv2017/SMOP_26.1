@@ -100,14 +100,6 @@ public class TangofteroEntity extends SMOPAnimal
 
     public TangofteroEntity(EntityType<? extends TamableAnimal> type, Level level) {
         super(type, level);
-        // Steering, DeluxeLib-style (same pairing as AthenianEntity). Vanilla's MoveControl only
-        // writes yRot while it is actively steering toward a waypoint, and the attack goal calls
-        // getNavigation().stop() the moment the target is within reach — so from that tick on the
-        // body yaw is frozen wherever the mob happened to arrive. Every melee hitbox is built off
-        // that yaw (AttackAnchor.resolveBody / HitWindow.resolveFacings both read getYRot()), so a
-        // target that circles is bitten at thin air while the head visibly tracks it.
-        // DirectionalMoveControl keeps steering at the target inside its face-lock radius, and
-        // faceCombatTarget() below carries that through the stationary ticks.
         this.moveControl = new DirectionalMoveControl<>(this).setTurnSpeed(10.0F).setCombatTurnSpeed(40.0F);
     }
 
@@ -124,11 +116,6 @@ public class TangofteroEntity extends SMOPAnimal
                 .add(Attributes.ATTACK_SPEED, 0.6D)
                 .add(Attributes.ATTACK_KNOCKBACK, 0.1D)
                 .add(Attributes.ATTACK_DAMAGE, 2.0D)
-                // Required by DirectionalMoveControl, which replaces vanilla's MoveControl#tick
-                // wholesale and with it the auto-jump that lifted mobs over one-block ledges. The
-                // pathfinder still routes through those ledges, so without a step height that
-                // clears them the mob walks into the step and stalls. Same reason AthenianEntity
-                // declares it.
                 .add(Attributes.STEP_HEIGHT, 1.0D);
     }
 
@@ -144,19 +131,13 @@ public class TangofteroEntity extends SMOPAnimal
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, this.createSleepGoal());
-        // The goal only decides WHEN to bite; the damage is in the clip's HitWindow (see
-        // registerAnimations) so it lands on the frame the jaws actually close.
         this.goalSelector.addGoal(2, new AnimatableMeleeAttackGoal(this, 1.3D, true)
                 .reach(2.0F)
-                // Gameplay pacing, deliberately not tied to the clip length: the swing runs 17
-                // ticks but the goal is free to wait longer between them. Athenian does the same
-                // (a 16-tick attack on a .cooldown(10)).
                 .cooldown(17)
                 .attackCondition(target -> !this.isBaby() && !this.isRoaring())
                 .onAttack((target, animator) -> animator.play(animator.getByName("attack"))));
         this.goalSelector.addGoal(3, new GenericBreedGoal<>(this, 1.2D));
 
-        // Colonial nester: any adult minds any clutch, and they scatter rather than avenge it.
         EggGoalRegistry.registerWithNearestGoal(this, SMOPBlocks.TANGOFTERO_EGG,
                 32, 3, 5, false, true,
                 ProtectEggBaseGoal.EggBreakReaction.FLEE, NEST_THREAT_SELECTOR, 4);
@@ -168,16 +149,14 @@ public class TangofteroEntity extends SMOPAnimal
         this.goalSelector.addGoal(10, new LookAtPlayerGoal(this, Player.class, 3.0F));
         this.goalSelector.addGoal(11, new RandomLookAroundGoal(this));
 
-        // Target goals live in their own selector with its own flag map, so SleepGoal does NOT
-        // preempt them — they each have to check the sleep state themselves.
         this.targetSelector.addGoal(1, new OwnerHurtByTargetGoal(this));
         this.targetSelector.addGoal(2, new OwnerHurtTargetGoal(this));
         this.targetSelector.addGoal(3, new AssistFlockGoal(this, 10.0D));
         this.targetSelector.addGoal(4, new HurtByTargetGoal(this));
-        // The !isBaby() here is not what keeps chicks out of fights — setTarget does that for every
-        // route at once. It just spares them a box scan for undead they could never act on.
+
         this.targetSelector.addGoal(5, new NearestAttackableTargetGoal<>(this, LivingEntity.class, 10, true, false,
-                (entity, level) -> !this.isBaby() && !this.isInSleepCycle() && UNDEAD_SELECTOR.test(entity)));
+                (entity, level) -> !this.isBaby() && !this.isTame() && !this.isInSleepCycle()
+                        && UNDEAD_SELECTOR.test(entity)));
     }
 
     // ───────────────────────────────────────────────────── ANIMATIONS ─────
@@ -354,10 +333,6 @@ public class TangofteroEntity extends SMOPAnimal
         if (this.biteCooldown > 0) {
             this.biteCooldown--;
         }
-        // Only the roar's own end is still counted here — starting it and the scare that follows
-        // are frame events on the clips themselves (see registerAnimations). BaseAnimation has no
-        // "on stop" hook, so the movement lock has to be released by a timer; it is sized from the
-        // clip via getRoarDuration(), so the two cannot drift.
         if (this.roarTicksLeft > 0 && --this.roarTicksLeft <= 0) {
             this.setRoaring(false);
         }
@@ -394,13 +369,25 @@ public class TangofteroEntity extends SMOPAnimal
             }
             return InteractionResult.SUCCESS;
         }
-        if (this.isTame() && this.biteCooldown <= 0 && stack.has(net.minecraft.core.component.DataComponents.FOOD)) {
+        if (this.isTame() && this.biteCooldown <= 0
+                && stack.has(net.minecraft.core.component.DataComponents.FOOD)
+                && this.wantsToEat(stack)) {
             if (!this.level().isClientSide()) {
                 this.handleFeeding(stack, player);
             }
             return InteractionResult.SUCCESS;
         }
         return super.mobInteract(player, hand);
+    }
+
+    private boolean wantsToEat(ItemStack stack) {
+        return this.getHealth() < this.getMaxHealth()
+                || (stack.is(Items.ROTTEN_FLESH) && this.canRoarNow());
+    }
+
+    private boolean canRoarNow() {
+        return this.isTame() && !this.isBaby()
+                && this.tickCount - this.lastRoarTick >= ROAR_COOLDOWN_TICKS;
     }
 
     private InteractionResult tryTame(Player player, ItemStack stack) {
@@ -431,9 +418,7 @@ public class TangofteroEntity extends SMOPAnimal
         this.biteCooldown = BITE_COOLDOWN_TICKS;
         this.animator().play(this.animator().getByName("bite"));
 
-        boolean canRoar = rottenFlesh && this.isTame() && !this.isBaby()
-                && this.tickCount - this.lastRoarTick >= ROAR_COOLDOWN_TICKS;
-        if (canRoar) {
+        if (rottenFlesh && this.canRoarNow()) {
             this.roarArmed = true;
             this.lastRoarTick = this.tickCount;
         }
@@ -490,10 +475,6 @@ public class TangofteroEntity extends SMOPAnimal
     }
 
     // ───────────────────────────────────────────────────── SLEEP ─────
-
-    // No sleepPhaseDuration override: SMOPAnimal derives every phase length from the clip registered
-    // under that phase's name, and getRoarDuration() from the roar clip. This mob registers no
-    // sitting clips, so it simply never has those phases.
 
     @Override
     public boolean shouldInterruptSleepDueTo(@NotNull LivingEntity nearby) {
