@@ -32,9 +32,6 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // DeluxeLib se resuelve desde aqui durante el desarrollo conjunto: gradlew publishToMavenLocal
-    // en el repo de la libreria y este build ve los cambios sin pasar por CurseForge.
-    mavenLocal()
     // DeluxeLib is resolved from here — see the note in settings.gradle. The content filter is not
     // decoration: without it Gradle would ask CurseMaven for every dependency in the build before
     // falling through to Maven Central, which CurseMaven explicitly asks consumers not to do.
@@ -140,7 +137,7 @@ dependencies {
     // A CurseMaven coordinate is not group:name:version. It is curse.maven:<slug>-<project id>:<file
     // id>, and the last number identifies ONE uploaded file rather than a version — so updating the
     // library means putting the new upload's file id in gradle.properties, not raising a version.
-    implementation "net.darkblade.deluxelib:deluxelib:${deluxelib_version}"
+    implementation "curse.maven:deluxe-lib-${deluxelib_curse_project}:${deluxelib_curse_file}"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
