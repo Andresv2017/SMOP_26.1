@@ -9,15 +9,14 @@ import net.darkblade.deluxelib.entity.CortexMonster;
 import net.darkblade.deluxelib.entity.ai.cortex.Cortex;
 import net.darkblade.deluxelib.combat.AttackShape;
 import net.darkblade.deluxelib.combat.HitWindow;
-import net.darkblade.deluxelib.entity.ai.cortex.behavior.impl.AnimatedMeleeBehavior;
-import net.darkblade.deluxelib.entity.ai.cortex.behavior.BehaviorContext;
-import net.darkblade.deluxelib.entity.ai.cortex.GlobalRule;
-import net.darkblade.deluxelib.entity.ai.cortex.behavior.impl.ChaseTargetBehavior;
-import net.darkblade.deluxelib.entity.ai.cortex.behavior.impl.TimedAnimationBehavior;
-import net.darkblade.deluxelib.entity.ai.cortex.behavior.impl.WanderBehavior;
-import net.darkblade.deluxelib.entity.ai.cortex.target.impl.CompositeTargeting;
-import net.darkblade.deluxelib.entity.ai.cortex.target.impl.HurtByAttackerTargeting;
-import net.darkblade.deluxelib.entity.ai.cortex.target.impl.NearestEntityTargeting;
+import net.darkblade.deluxelib.entity.ai.cortex.routine.impl.SwingRoutine;
+import net.darkblade.deluxelib.entity.ai.cortex.Blackboard;
+import net.darkblade.deluxelib.entity.ai.cortex.routine.impl.PursueRoutine;
+import net.darkblade.deluxelib.entity.ai.cortex.routine.impl.ScriptedRoutine;
+import net.darkblade.deluxelib.entity.ai.cortex.routine.impl.WanderRoutine;
+import net.darkblade.deluxelib.entity.ai.cortex.sense.impl.CompositeSense;
+import net.darkblade.deluxelib.entity.ai.cortex.sense.impl.HurtByAttackerSense;
+import net.darkblade.deluxelib.entity.ai.cortex.sense.impl.NearestEntitySense;
 import net.darkblade.deluxelib.entity.ai.pathing.DirectionalMoveControl;
 import net.darkblade.deluxelib.entity.ai.rotation.SmoothBodyRotationControl;
 import net.darkblade.deluxelib.camera.ScreenShake;
@@ -126,29 +125,29 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
     @Override
     protected @NotNull Cortex<GTEntity, GTState> buildCortex() {
         return Cortex.<GTEntity, GTState>builder(GTState.WANDER)
-                .targeting(new CompositeTargeting<GTEntity>(
-                        new NearestEntityTargeting<GTEntity, Player>(Player.class, TARGET_RANGE, 10, true,
+                .sense(new CompositeSense<GTEntity>(
+                        new NearestEntitySense<GTEntity, Player>(Player.class, TARGET_RANGE, 10, true,
                                 player -> !player.isCreative() && !player.isSpectator()),
-                        new HurtByAttackerTargeting<>(GRUDGE_TICKS)))
-                .register(GTState.WANDER, new WanderBehavior<GTEntity, GTState>(1.0D)
+                        new HurtByAttackerSense<>(GRUDGE_TICKS)))
+                .bind(GTState.WANDER, new WanderRoutine<GTEntity, GTState>(1.0D)
                         .wanderRange(WANDER_RANGE_H, WANDER_RANGE_V)
                         .onTargetFound(GTState.CHASE))
-                .register(GTState.CHASE, new ChaseTargetBehavior<GTEntity, GTState>(CHASE_SPEED,
-                        new GTAttackSelector()))
-                .register(GTState.BITE, new AnimatedMeleeBehavior<GTEntity, GTState>(
+                .bind(GTState.CHASE, new PursueRoutine<GTEntity, GTState>(CHASE_SPEED,
+                        new GTStrikePicker()))
+                .bind(GTState.BITE, new SwingRoutine<GTEntity, GTState>(
                         "bite", BITE_TICKS, GTState.CHASE)
                         .faceTargetUntil(6))
-                .register(GTState.HORN_SWING, new AnimatedMeleeBehavior<GTEntity, GTState>(
+                .bind(GTState.HORN_SWING, new SwingRoutine<GTEntity, GTState>(
                         "horn_swing", HORN_SWING_TICKS, GTState.CHASE)
                         .faceTargetUntil(8))
-                .register(GTState.CLAW_SWING, new AnimatedMeleeBehavior<GTEntity, GTState>(
+                .bind(GTState.CLAW_SWING, new SwingRoutine<GTEntity, GTState>(
                         "claw_swing", CLAW_SWING_TICKS, GTState.CHASE)
                         .faceTargetUntil(8))
-                .register(GTState.STOMP, new AnimatedMeleeBehavior<GTEntity, GTState>(
+                .bind(GTState.STOMP, new SwingRoutine<GTEntity, GTState>(
                         "attack_stomp", STOMP_TICKS, GTState.CHASE))
-                .register(GTState.ROAR, new TimedAnimationBehavior<GTEntity, GTState>(
+                .bind(GTState.ROAR, new ScriptedRoutine<GTEntity, GTState>(
                         "roar", ROAR_TICKS, GTState.CHASE).faceTarget())
-                .globalRule(this::roarAtNewTarget)
+                .reflex(this::roarAtNewTarget)
                 .build();
     }
 
@@ -224,13 +223,13 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
 
     private long nextRoarTime;
 
-    private @Nullable Integer roarAtNewTarget(GTEntity gt, BehaviorContext context, int currentStateId) {
+    private @Nullable GTState roarAtNewTarget(GTEntity gt, Blackboard bb, GTState active) {
         LivingEntity target = gt.getTarget();
         if (target == null || !target.isAlive()) {
             gt.lastRoaredAt = null;
             return null;
         }
-        if (target == gt.lastRoaredAt || currentStateId == GTState.ROAR.id() || gt.isInSleepCycle()) {
+        if (target == gt.lastRoaredAt || active == GTState.ROAR || gt.isInSleepCycle()) {
             return null;
         }
         if (gt.level().getGameTime() < gt.nextRoarTime) {
@@ -242,7 +241,7 @@ public class GTEntity extends CortexMonster<GTEntity, GTState> implements Animat
         gt.nextRoarTime = gt.level().getGameTime() + ROAR_COOLDOWN_TICKS;
         gt.level().playSound(null, gt.getX(), gt.getY(), gt.getZ(),
                 SMOPSounds.GT_ROAR.get(), SoundSource.HOSTILE, 1.0F, 1.0F);
-        return GTState.ROAR.id();
+        return GTState.ROAR;
     }
 
     // ------------------------------------------------------------------ SLEEP -----

@@ -1,13 +1,12 @@
 package net.darkblade.smop.entity.gt;
 
-import net.darkblade.deluxelib.entity.ai.cortex.StateEnum;
-import net.darkblade.deluxelib.entity.ai.cortex.behavior.BehaviorContext;
-import net.darkblade.deluxelib.entity.ai.cortex.behavior.impl.AttackSelector;
+import net.darkblade.deluxelib.entity.ai.cortex.Blackboard;
+import net.darkblade.deluxelib.entity.ai.cortex.routine.StrikePicker;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
-public final class GTAttackSelector implements AttackSelector<GTEntity> {
+public final class GTStrikePicker implements StrikePicker<GTEntity, GTState> {
 
     private static final double ATTACK_RANGE = 8.0D;
 
@@ -22,13 +21,13 @@ public final class GTAttackSelector implements AttackSelector<GTEntity> {
 
     private static final double FRONTAL_SLACK = 1.0D;
 
-    private final StateEnum[] frontalAttacks =
+    private final GTState[] frontalAttacks =
             {GTState.BITE, GTState.HORN_SWING, GTState.CLAW_SWING};
 
     private long nextStompTime;
 
     @Override
-    public @Nullable StateEnum select(GTEntity gt, BehaviorContext context) {
+    public @Nullable GTState pick(GTEntity gt, Blackboard bb) {
         LivingEntity target = gt.getTarget();
         if (target == null || !target.isAlive()) {
             return null;
@@ -50,7 +49,7 @@ public final class GTAttackSelector implements AttackSelector<GTEntity> {
                 this.nextStompTime = gt.level().getGameTime() + STOMP_GAP_TICKS;
                 return GTState.STOMP;
             }
-            // Nothing viable. Returning null keeps ChaseTargetBehavior running, which keeps steering —
+            // Nothing viable. Returning null keeps PursueRoutine running, which keeps steering —
             // the animal turns instead of swinging at empty air.
             return null;
         }

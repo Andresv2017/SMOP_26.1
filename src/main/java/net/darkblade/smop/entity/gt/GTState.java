@@ -1,8 +1,8 @@
 package net.darkblade.smop.entity.gt;
 
-import net.darkblade.deluxelib.entity.ai.cortex.StateEnum;
+import net.darkblade.deluxelib.entity.ai.cortex.CortexState;
 
-public enum GTState implements StateEnum {
+public enum GTState implements CortexState {
     WANDER(0),
     CHASE(1),
     BITE(2),
